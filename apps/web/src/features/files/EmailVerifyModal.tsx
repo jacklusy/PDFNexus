@@ -47,7 +47,10 @@ export function EmailVerifyModal({
     } catch (err) {
       const msg =
         err instanceof ApiError
-          ? err.message
+          ? err.status === 413
+            ? err.message ||
+              'This file is too large to upload. Try reducing pages or exporting without images.'
+            : err.message
           : 'Could not send your download email. Please try again.';
       setError(msg);
     } finally {

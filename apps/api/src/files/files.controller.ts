@@ -13,7 +13,6 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
 import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { emailSchema, ErrorCodes } from '@pdfnexus/shared';
@@ -22,6 +21,7 @@ import { VerifiedEmail } from '../common/decorators/verified-email.decorator';
 import { CookieService } from '../auth/cookie.service';
 import { AuthEmailService } from '../auth/auth-email.service';
 import { FilesService } from './files.service';
+import { DEFAULT_MAX_UPLOAD_BYTES } from './upload-multer.options';
 
 function clientIp(req: Request): string {
   const forwarded = req.headers['x-forwarded-for'];
@@ -42,24 +42,18 @@ export class FilesController {
 
   @Post()
   @UseGuards(VerifiedEmailGuard)
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-      limits: {
-        fileSize: 52_428_800,
-      },
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file'))
   async upload(
     @VerifiedEmail() email: string,
     @UploadedFile() file: Express.Multer.File,
     @Req() req: Request,
   ) {
-    const max = this.config.get<number>('MAX_UPLOAD_BYTES') ?? 52_428_800;
+    const max =
+      this.config.get<number>('MAX_UPLOAD_BYTES') ?? DEFAULT_MAX_UPLOAD_BYTES;
     if (file && file.size > max) {
       throw new BadRequestException({
-        error: 'File exceeds maximum upload size',
-        code: 'FILE_TOO_LARGE',
+        error: `File exceeds maximum upload size (${Math.round(max / (1024 * 1024))}MB)`,
+        code: ErrorCodes.FILE_TOO_LARGE,
       });
     }
     const sendEmail =
@@ -72,23 +66,17 @@ export class FilesController {
    * one-click claim link that verifies the address and downloads the file.
    */
   @Post('email-delivery')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-      limits: {
-        fileSize: 52_428_800,
-      },
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file'))
   async emailDelivery(
     @UploadedFile() file: Express.Multer.File,
     @Req() req: Request,
   ) {
-    const max = this.config.get<number>('MAX_UPLOAD_BYTES') ?? 52_428_800;
+    const max =
+      this.config.get<number>('MAX_UPLOAD_BYTES') ?? DEFAULT_MAX_UPLOAD_BYTES;
     if (file && file.size > max) {
       throw new BadRequestException({
-        error: 'File exceeds maximum upload size',
-        code: 'FILE_TOO_LARGE',
+        error: `File exceeds maximum upload size (${Math.round(max / (1024 * 1024))}MB)`,
+        code: ErrorCodes.FILE_TOO_LARGE,
       });
     }
 

@@ -7,6 +7,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { MulterError } from 'multer';
+import { DEFAULT_MAX_UPLOAD_BYTES } from '../../files/upload-multer.options';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -22,7 +24,24 @@ export class AllExceptionsFilter implements ExceptionFilter {
       code: 'INTERNAL_ERROR',
     };
 
-    if (exception instanceof HttpException) {
+    if (exception instanceof MulterError) {
+      if (exception.code === 'LIMIT_FILE_SIZE') {
+        const max =
+          Number(process.env.MAX_UPLOAD_BYTES) || DEFAULT_MAX_UPLOAD_BYTES;
+        const mb = Math.round(max / (1024 * 1024));
+        status = HttpStatus.PAYLOAD_TOO_LARGE;
+        body = {
+          error: `File exceeds ${mb}MB limit`,
+          code: 'FILE_TOO_LARGE',
+        };
+      } else {
+        status = HttpStatus.BAD_REQUEST;
+        body = {
+          error: exception.message || 'Invalid upload',
+          code: 'FILE_INVALID',
+        };
+      }
+    } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       const exResponse = exception.getResponse();
       if (typeof exResponse === 'string') {

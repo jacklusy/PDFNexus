@@ -38,8 +38,9 @@ export class StorageService implements OnModuleInit {
 
   async putObject(
     key: string,
-    body: Buffer,
+    body: Buffer | Readable | string,
     contentType: string,
+    contentLength?: number,
   ): Promise<void> {
     await this.client.send(
       new PutObjectCommand({
@@ -47,8 +48,30 @@ export class StorageService implements OnModuleInit {
         Key: key,
         Body: body,
         ContentType: contentType,
+        ...(typeof contentLength === 'number'
+          ? { ContentLength: contentLength }
+          : {}),
       }),
     );
+  }
+
+  /** Stream a local file to S3, then delete the temp path. */
+  async putObjectFromFile(
+    key: string,
+    filePath: string,
+    contentType: string,
+    contentLength: number,
+  ): Promise<void> {
+    const { createReadStream } = await import('fs');
+    const { unlink } = await import('fs/promises');
+    const stream = createReadStream(filePath);
+    try {
+      await this.putObject(key, stream, contentType, contentLength);
+    } finally {
+      await unlink(filePath).catch(() => {
+        // ignore cleanup failures
+      });
+    }
   }
 
   async getObject(key: string): Promise<{

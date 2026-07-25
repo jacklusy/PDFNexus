@@ -20,6 +20,7 @@ import { StorageService } from '../storage/storage.service';
 import { RedisService } from '../redis/redis.service';
 import { AuthEmailService } from '../auth/auth-email.service';
 import { SEND_FILE_EMAIL_QUEUE } from '../jobs/job.constants';
+import { DEFAULT_MAX_UPLOAD_BYTES } from './upload-multer.options';
 
 const PDF_MIME = new Set(['application/pdf']);
 const DOCX_MIME = new Set([
@@ -45,7 +46,48 @@ export class FilesService {
   ) {}
 
   private maxBytes(): number {
-    return this.config.get<number>('MAX_UPLOAD_BYTES') ?? 52_428_800;
+    return this.config.get<number>('MAX_UPLOAD_BYTES') ?? DEFAULT_MAX_UPLOAD_BYTES;
+  }
+
+  private maxLabel(): string {
+    return `${Math.round(this.maxBytes() / (1024 * 1024))}MB`;
+  }
+
+  private async persistUpload(
+    storageKey: string,
+    file: Express.Multer.File,
+    contentType: string,
+  ): Promise<void> {
+    if (file.path) {
+      await this.storage.putObjectFromFile(
+        storageKey,
+        file.path,
+        contentType,
+        file.size,
+      );
+      return;
+    }
+    if (file.buffer?.length) {
+      await this.storage.putObject(
+        storageKey,
+        file.buffer,
+        contentType,
+        file.size,
+      );
+      return;
+    }
+    throw new BadRequestException({
+      error: 'File is required',
+      code: ErrorCodes.FILE_INVALID,
+    });
+  }
+
+  private async cleanupTempUpload(file: Express.Multer.File): Promise<void> {
+    if (!file?.path) return;
+    const { unlink } = await import('fs/promises');
+    await unlink(file.path).catch(() => {
+      // already removed by putObjectFromFile, or never written
+    });
   }
 
   private ttlDays(): number {
@@ -92,16 +134,25 @@ export class FilesService {
     }
 
     if (file.size > this.maxBytes()) {
+      await this.cleanupTempUpload(file);
       throw new PayloadTooLargeException({
-        error: 'File exceeds 50MB limit',
+        error: `File exceeds ${this.maxLabel()} limit`,
         code: ErrorCodes.FILE_TOO_LARGE,
       });
     }
 
-    const { kind, contentType } = this.detectKind(
-      file.mimetype,
-      file.originalname,
-    );
+    let kind: FileKind;
+    let contentType: string;
+    try {
+      ({ kind, contentType } = this.detectKind(
+        file.mimetype,
+        file.originalname,
+      ));
+    } catch (err) {
+      await this.cleanupTempUpload(file);
+      throw err;
+    }
+
     const id = randomUUID();
     const storageKey = `files/${ownerEmail}/${id}/${file.originalname}`;
     const expiresAt = new Date(
@@ -123,7 +174,7 @@ export class FilesService {
     });
 
     try {
-      await this.storage.putObject(storageKey, file.buffer, contentType);
+      await this.persistUpload(storageKey, file, contentType);
       const processingMs = Date.now() - started;
       const updated = await this.prisma.storedFile.update({
         where: { id: record.id },
@@ -174,6 +225,7 @@ export class FilesService {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'upload failed';
       this.logger.error(`Upload failed for ${record.id}: ${message}`);
+      await this.cleanupTempUpload(file);
       await this.prisma.storedFile.update({
         where: { id: record.id },
         data: { status: FileStatus.FAILED },
