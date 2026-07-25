@@ -4,7 +4,6 @@ import { Logger } from 'nestjs-pino';
 import cookieParser from 'cookie-parser';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
-import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 function normalizeOrigin(value: string): string | null {
   const trimmed = value.trim();
@@ -49,7 +48,6 @@ async function bootstrap() {
 
   app.useLogger(app.get(Logger));
   app.setGlobalPrefix('api');
-  app.useGlobalFilters(new AllExceptionsFilter());
 
   const httpAdapter = app.getHttpAdapter().getInstance();
   if (typeof httpAdapter.set === 'function') {

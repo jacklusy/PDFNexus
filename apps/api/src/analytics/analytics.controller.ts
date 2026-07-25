@@ -1,6 +1,16 @@
-import { Body, Controller, Get, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { AnalyticsService } from './analytics.service';
+import { AdminSessionGuard } from '../admin/auth/admin-session.guard';
+import { RequirePermission } from '../admin/auth/require-permission.decorator';
 
 @Controller('analytics')
 export class AnalyticsController {
@@ -15,7 +25,10 @@ export class AnalyticsController {
     return this.analytics.track(body, countryHeader);
   }
 
+  /** Protected — use admin dashboard or /api/admin/analytics */
   @Get('summary')
+  @UseGuards(AdminSessionGuard)
+  @RequirePermission('analytics.read')
   summary(@Query('days') days?: string) {
     const n = days ? Number.parseInt(days, 10) : 7;
     return this.analytics.summary(

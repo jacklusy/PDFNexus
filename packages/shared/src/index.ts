@@ -15,10 +15,14 @@ export const ErrorCodes = {
   AUTH_INVALID_CODE: 'AUTH_INVALID_CODE',
   AUTH_EXPIRED: 'AUTH_EXPIRED',
   AUTH_TOO_MANY_ATTEMPTS: 'AUTH_TOO_MANY_ATTEMPTS',
+  AUTH_INVALID_CREDENTIALS: 'AUTH_INVALID_CREDENTIALS',
+  AUTH_ACCOUNT_LOCKED: 'AUTH_ACCOUNT_LOCKED',
+  AUTH_FORBIDDEN: 'AUTH_FORBIDDEN',
   FILE_INVALID: 'FILE_INVALID',
   FILE_TOO_LARGE: 'FILE_TOO_LARGE',
   FILE_NOT_FOUND: 'FILE_NOT_FOUND',
   VALIDATION_ERROR: 'VALIDATION_ERROR',
+  WEAK_PASSWORD: 'WEAK_PASSWORD',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
@@ -72,3 +76,68 @@ export type OcrRequestInput = z.infer<typeof ocrRequestSchema>;
 
 export const FILE_KINDS = ['merged_pdf', 'docx'] as const;
 export type FileKind = (typeof FILE_KINDS)[number];
+
+/** Laravel-style password: min 10, upper, lower, digit, special */
+export const adminPasswordSchema = z
+  .string()
+  .min(10)
+  .max(128)
+  .regex(/[a-z]/, 'Must include a lowercase letter')
+  .regex(/[A-Z]/, 'Must include an uppercase letter')
+  .regex(/[0-9]/, 'Must include a digit')
+  .regex(/[^A-Za-z0-9]/, 'Must include a special character');
+
+export const adminLoginSchema = z.object({
+  email: emailSchema,
+  password: z.string().min(1).max(128),
+});
+
+export const adminChangePasswordRequestSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+});
+
+export const adminChangePasswordConfirmSchema = z.object({
+  code: z.string().regex(/^\d{6}$/),
+  newPassword: adminPasswordSchema,
+});
+
+export const adminChangeEmailRequestSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newEmail: emailSchema,
+});
+
+export const adminChangeEmailConfirmSchema = z.object({
+  code: z.string().regex(/^\d{6}$/),
+});
+
+export const ADMIN_PERMISSIONS = [
+  'dashboard.read',
+  'users.read',
+  'users.write',
+  'logs.read',
+  'analytics.read',
+  'analytics.export',
+  'monitoring.read',
+  'audit.read',
+  'errors.read',
+  'errors.write',
+  'notifications.read',
+  'security.read',
+  'settings.write',
+] as const;
+
+export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];
+
+export type AdminLoginInput = z.infer<typeof adminLoginSchema>;
+export type AdminChangePasswordRequestInput = z.infer<
+  typeof adminChangePasswordRequestSchema
+>;
+export type AdminChangePasswordConfirmInput = z.infer<
+  typeof adminChangePasswordConfirmSchema
+>;
+export type AdminChangeEmailRequestInput = z.infer<
+  typeof adminChangeEmailRequestSchema
+>;
+export type AdminChangeEmailConfirmInput = z.infer<
+  typeof adminChangeEmailConfirmSchema
+>;

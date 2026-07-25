@@ -141,6 +141,27 @@ export class MailService {
     });
   }
 
+  async sendAdminOtp(
+    email: string,
+    code: string,
+    purpose: 'change_password' | 'change_email' | 'stepup',
+  ): Promise<void> {
+    const labels = {
+      change_password: 'confirm your password change',
+      change_email: 'confirm your email change',
+      stepup: 'complete a sensitive admin action',
+    };
+    const label = labels[purpose];
+    await this.send({
+      to: email,
+      subject: `PDFNexus Admin verification code`,
+      text: `Your admin verification code is ${code}. Use it to ${label}. It expires in 10 minutes.`,
+      html: `<p>Your admin verification code is <strong style="font-size:20px;letter-spacing:0.1em">${code}</strong>.</p>
+<p>Use it to ${label}. It expires in <strong>10 minutes</strong>.</p>
+<p style="color:#64748b;font-size:12px">If you did not request this, secure your admin account immediately.</p>`,
+    });
+  }
+
   private buildDownloadEmailHtml(opts: {
     filename: string;
     downloadUrl: string;

@@ -42,6 +42,18 @@ const envSchema = z.object({
   OCR_DAILY_BUDGET: z.coerce.number().int().positive().default(500),
   API_PORT: z.coerce.number().int().positive().default(4000),
   TRUST_PROXY: z.coerce.number().int().nonnegative().default(1),
+  ADMIN_SESSION_SECRET: z.string().min(32).optional(),
+  ADMIN_SESSION_COOKIE: z.string().default('admin_session'),
+  ADMIN_SESSION_TTL_HOURS: z.coerce.number().int().positive().default(12),
+  ADMIN_SEED_EMAIL: z
+    .string()
+    .optional()
+    .default('')
+    .transform((v) => v.trim()),
+  ADMIN_SEED_PASSWORD: z.string().optional().default(''),
+  ADMIN_MAX_LOGIN_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  ADMIN_LOCKOUT_MINUTES: z.coerce.number().int().positive().default(15),
+  LOG_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
 });
 
 export type EnvConfig = z.infer<typeof envSchema> & {

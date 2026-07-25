@@ -1,5 +1,6 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_FILTER } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { validateEnv } from './config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
@@ -13,7 +14,10 @@ import { StorageModule } from './storage/storage.module';
 import { OcrModule } from './ocr/ocr.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { FeedbackModule } from './feedback/feedback.module';
+import { AdminModule } from './admin/admin.module';
 import { SecurityMiddleware } from './common/middleware/security.middleware';
+import { HttpRequestLogMiddleware } from './common/middleware/http-request-log.middleware';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 @Module({
   imports: [
@@ -41,11 +45,19 @@ import { SecurityMiddleware } from './common/middleware/security.middleware';
     OcrModule,
     AnalyticsModule,
     FeedbackModule,
+    AdminModule,
   ],
-  providers: [SecurityMiddleware],
+  providers: [
+    SecurityMiddleware,
+    HttpRequestLogMiddleware,
+    AllExceptionsFilter,
+    { provide: APP_FILTER, useExisting: AllExceptionsFilter },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(SecurityMiddleware).forRoutes('*');
+    consumer
+      .apply(SecurityMiddleware, HttpRequestLogMiddleware)
+      .forRoutes('*');
   }
 }

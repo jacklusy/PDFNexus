@@ -14,6 +14,30 @@
   --font-display: var(--font-instrument), ui-serif, Georgia, serif;
 }
 
+.dark {
+  --color-ink: #e8f0f0;
+  --color-muted: #94a8ad;
+  --color-canvas: #0b1416;
+  --color-surface: #122024;
+  --color-surface-2: #182a2e;
+  --color-border: #24383c;
+  --color-accent: #2dd4bf;
+  --color-accent-hover: #5eead4;
+  --color-accent-soft: rgba(45, 212, 191, 0.15);
+}
+
+.dark {
+  --color-ink: #f1f5f9;
+  --color-muted: #94a3b8;
+  --color-canvas: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-2: #334155;
+  --color-border: #475569;
+  --color-accent: #14b8a6;
+  --color-accent-hover: #0d9488;
+  --color-accent-soft: #134e4a;
+}
+
 @theme inline {
   --font-sans: var(--font-sans);
   --font-display: var(--font-display);

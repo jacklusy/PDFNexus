@@ -24,12 +24,53 @@ enum DownloadChannel {
   EMAIL
 }
 
+enum AdminUserStatus {
+  ACTIVE
+  LOCKED
+  DISABLED
+}
+
+enum AdminOtpPurpose {
+  LOGIN_STEPUP
+  CHANGE_EMAIL
+  CHANGE_PASSWORD
+}
+
+enum VerifiedUserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum ErrorSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ErrorEventStatus {
+  OPEN
+  RESOLVED
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
 model VerifiedUser {
-  id         String   @id @default(cuid())
-  email      String   @unique
+  id         String             @id @default(cuid())
+  email      String             @unique
+  status     VerifiedUserStatus @default(ACTIVE)
   verifiedAt DateTime
   lastSeenAt DateTime
-  createdAt  DateTime @default(now())
+  createdAt  DateTime           @default(now())
+  notes      String?
+
+  @@index([createdAt])
+  @@index([lastSeenAt])
+  @@index([status])
 }
 
 model EmailVerification {
@@ -45,16 +86,16 @@ model EmailVerification {
 }
 
 model StoredFile {
-  id            String     @id @default(cuid())
+  id            String          @id @default(cuid())
   ownerEmail    String
   kind          FileKind
   originalName  String
   storageKey    String
   sizeBytes     Int
-  status        FileStatus @default(PENDING)
+  status        FileStatus      @default(PENDING)
   processingMs  Int?
-  downloadCount Int        @default(0)
-  createdAt     DateTime   @default(now())
+  downloadCount Int             @default(0)
+  createdAt     DateTime        @default(now())
   expiresAt     DateTime
   downloads     Download[]
   logs          ProcessingLog[]
@@ -62,6 +103,8 @@ model StoredFile {
   @@index([ownerEmail, createdAt])
   @@index([expiresAt, status])
   @@index([storageKey])
+  @@index([createdAt])
+  @@index([status])
 }
 
 model Download {
@@ -73,6 +116,7 @@ model Download {
   file      StoredFile      @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@index([fileId, createdAt])
+  @@index([email, createdAt])
 }
 
 model AnalyticsEvent {
@@ -87,6 +131,8 @@ model AnalyticsEvent {
 
   @@index([type, createdAt])
   @@index([createdAt])
+  @@index([country, createdAt])
+  @@index([device, createdAt])
 }
 
 model Feedback {
@@ -113,4 +159,163 @@ model ProcessingLog {
 
   @@index([fileId, createdAt])
   @@index([stage, status])
+  @@index([createdAt])
+}
+
+/// Admin staff accounts (separate from product VerifiedUser)
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  permissions String // JSON string array
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+
+  @@map("roles")
+}
+
+model User {
+  id                  String           @id @default(cuid())
+  email               String           @unique
+  passwordHash        String
+  roleId              String
+  status              AdminUserStatus  @default(ACTIVE)
+  failedLoginAttempts Int              @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  lastLoginIp         String?
+  passwordChangedAt   DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  deletedAt           DateTime?
+  role                Role             @relation(fields: [roleId], references: [id])
+  sessions            AdminSession[]
+  otpChallenges       AdminOtpChallenge[]
+  notifications       AdminNotification[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model AdminSession {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  ip        String?
+  userAgent String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+model AdminOtpChallenge {
+  id         String          @id @default(cuid())
+  userId     String
+  purpose    AdminOtpPurpose
+  codeHash   String
+  payload    String? // JSON
+  expiresAt  DateTime
+  attempts   Int             @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime        @default(now())
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, createdAt])
+}
+
+model HttpRequestLog {
+  id            String   @id @default(cuid())
+  requestId     String
+  createdAt     DateTime @default(now())
+  userEmail     String?
+  adminUserId   String?
+  ip            String?
+  method        String
+  path          String
+  route         String?
+  query         String?
+  bodySummary   String?
+  statusCode    Int
+  durationMs    Int
+  userAgent     String?
+  browser       String?
+  os            String?
+  deviceType    String?
+  referrer      String?
+  sessionId     String?
+  authStatus    String?
+  requestBytes  Int?
+  responseBytes Int?
+  errorMessage  String?
+
+  @@index([createdAt])
+  @@index([path, createdAt])
+  @@index([statusCode, createdAt])
+  @@index([adminUserId, createdAt])
+  @@index([ip, createdAt])
+  @@index([requestId])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorUserId  String?
+  actorEmail   String?
+  action       String
+  resourceType String?
+  resourceId   String?
+  ip           String?
+  userAgent    String?
+  beforeJson   String?
+  afterJson    String?
+  success      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+model ErrorEvent {
+  id              String           @id @default(cuid())
+  fingerprint     String
+  severity        ErrorSeverity    @default(MEDIUM)
+  source          String
+  message         String
+  stack           String?
+  requestId       String?
+  userEmail       String?
+  adminUserId     String?
+  status          ErrorEventStatus @default(OPEN)
+  occurrenceCount Int              @default(1)
+  metaJson        String?
+  firstSeenAt     DateTime         @default(now())
+  lastSeenAt      DateTime         @default(now())
+  resolvedAt      DateTime?
+
+  @@unique([fingerprint])
+  @@index([status, lastSeenAt])
+  @@index([severity, lastSeenAt])
+  @@index([lastSeenAt])
+}
+
+model AdminNotification {
+  id        String               @id @default(cuid())
+  userId    String?
+  type      String
+  severity  NotificationSeverity @default(INFO)
+  title     String
+  body      String
+  metaJson  String?
+  readAt    DateTime?
+  createdAt DateTime             @default(now())
+  user      User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([userId, readAt, createdAt])
+  @@index([severity, createdAt])
 }
