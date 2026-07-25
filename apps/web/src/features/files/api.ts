@@ -5,6 +5,7 @@ import type { FileKind } from '@pdfnexus/shared';
 
 export interface AuthMeResponse {
   verified: boolean;
+  authenticated?: boolean;
   email?: string | null;
 }
 
@@ -18,7 +19,14 @@ export interface UploadFinalResponse {
 
 export async function getAuthMe(): Promise<AuthMeResponse> {
   try {
-    return await apiFetch<AuthMeResponse>('/api/auth/me');
+    const me = await apiFetch<AuthMeResponse & { authenticated?: boolean }>(
+      '/api/auth/me'
+    );
+    return {
+      verified: Boolean(me.verified ?? me.authenticated),
+      authenticated: Boolean(me.authenticated ?? me.verified),
+      email: me.email,
+    };
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status;
     if (status === 401 || status === 403) {
@@ -49,6 +57,27 @@ export async function uploadFinalFile(
   form.append('originalName', options.fileName);
 
   return apiFetch<UploadFinalResponse>('/api/files', {
+    method: 'POST',
+    body: form,
+  });
+}
+
+/** First-time download: upload + branded email with claim/download button (no cookie yet). */
+export async function uploadAndEmailDownload(
+  blob: Blob,
+  options: {
+    email: string;
+    fileName: string;
+    kind: FileKind;
+  }
+): Promise<UploadFinalResponse> {
+  const form = new FormData();
+  form.append('file', blob, options.fileName);
+  form.append('kind', options.kind);
+  form.append('originalName', options.fileName);
+  form.append('email', options.email);
+
+  return apiFetch<UploadFinalResponse>('/api/files/email-delivery', {
     method: 'POST',
     body: form,
   });

@@ -120,7 +120,7 @@ export default function WorkspaceApp() {
 
   const {
     gateDownload,
-    resumeAfterVerify,
+    submitEmailForDownload,
     cancelPending,
     clearResult,
     downloadNow,
@@ -595,14 +595,8 @@ export default function WorkspaceApp() {
     await gateDownload({ blob, fileName, kind: 'docx' });
   };
 
-  const handleVerified = async () => {
-    setVerifyOpen(false);
-    try {
-      await resumeAfterVerify();
-    } catch (err) {
-      console.error(err);
-      toast.error('Upload failed', 'Could not store your final file. Try again.');
-    }
+  const handleSubmitVerifyEmail = async (email: string) => {
+    await submitEmailForDownload(email);
   };
 
   const handleTriggerUpload = () => fileInputRef.current?.click();
@@ -919,7 +913,7 @@ export default function WorkspaceApp() {
           setVerifyOpen(false);
           cancelPending();
         }}
-        onVerified={() => void handleVerified()}
+        onSubmitEmail={handleSubmitVerifyEmail}
       />
 
       <ConfirmDialog

@@ -49,7 +49,13 @@ export function DownloadSuccessModal({
         </div>
       </div>
 
-      {result.emailQueued && (
+      {result.emailQueued && result.awaitingEmailLink && (
+        <p className="mb-4 flex items-center gap-2 rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-[11px] font-medium text-teal-900">
+          <Mail className="h-3.5 w-3.5 shrink-0" />
+          Check your email — click <strong>Download your file</strong> in the message
+        </p>
+      )}
+      {result.emailQueued && !result.awaitingEmailLink && (
         <p className="mb-4 flex items-center gap-2 rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-[11px] font-medium text-teal-900">
           <Mail className="h-3.5 w-3.5 shrink-0" />
           Also sent to your verified email
@@ -67,9 +73,11 @@ export function DownloadSuccessModal({
         <button
           type="button"
           onClick={onDownload}
-          className="flex items-center justify-center gap-1.5 rounded-xl bg-teal-700 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+          disabled={result.awaitingEmailLink}
+          className="flex items-center justify-center gap-1.5 rounded-xl bg-teal-700 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
         >
-          <Download className="h-3.5 w-3.5" /> Download
+          <Download className="h-3.5 w-3.5" />{' '}
+          {result.awaitingEmailLink ? 'Use email link' : 'Download'}
         </button>
       </div>
     </Dialog>

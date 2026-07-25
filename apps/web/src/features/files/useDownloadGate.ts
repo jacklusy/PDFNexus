@@ -7,6 +7,7 @@ import { revokeObjectUrl, trackObjectUrl } from '@/lib/pdf/pdfHelpers';
 import {
   getAuthMe,
   triggerBrowserDownload,
+  uploadAndEmailDownload,
   uploadFinalFile,
   type UploadFinalResponse,
 } from './api';
@@ -19,6 +20,8 @@ export interface GatedDownloadResult {
   pageCount?: number;
   emailQueued: boolean;
   kind: FileKind;
+  /** True when user must open the email link (first-time verify) */
+  awaitingEmailLink?: boolean;
 }
 
 export interface UseDownloadGateOptions {
@@ -36,10 +39,10 @@ type PendingUpload = {
 };
 
 /**
- * Hybrid download gate:
+ * Download gate:
  * 1. Client creates final blob
- * 2. If not verified → open EmailVerifyModal
- * 3. After verify → POST /api/files → offer downloadUrl + email notice
+ * 2. If not verified → EmailVerifyModal (email only) → branded download email
+ * 3. If verified → POST /api/files → immediate browser download
  */
 export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOptions) {
   const pendingRef = useRef<PendingUpload | null>(null);
@@ -69,11 +72,11 @@ export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOption
         const localBlobUrl = trackObjectUrl(URL.createObjectURL(blob));
         const gated: GatedDownloadResult = {
           localBlobUrl,
-          downloadUrl: uploaded.downloadUrl,
+          downloadUrl: uploaded.downloadUrl || '',
           fileName,
           size: blob.size,
           pageCount,
-          emailQueued: uploaded.emailQueued !== false,
+          emailQueued: false,
           kind,
         };
         setResult(gated);
@@ -123,6 +126,46 @@ export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOption
     [onNeedVerify, onError, uploadAndFinish]
   );
 
+  /** First-time path: upload under email and send branded download-link email. */
+  const submitEmailForDownload = useCallback(async (email: string) => {
+    const pending = pendingRef.current;
+    if (!pending) {
+      throw new Error('No pending download');
+    }
+
+    setIsUploading(true);
+    try {
+      await uploadAndEmailDownload(pending.blob, {
+        email,
+        fileName: pending.fileName,
+        kind: pending.kind,
+      });
+      const localBlobUrl = trackObjectUrl(URL.createObjectURL(pending.blob));
+      const gated: GatedDownloadResult = {
+        localBlobUrl,
+        downloadUrl: '',
+        fileName: pending.fileName,
+        size: pending.blob.size,
+        pageCount: pending.pageCount,
+        emailQueued: true,
+        awaitingEmailLink: true,
+        kind: pending.kind,
+      };
+      trackEvent(pending.kind === 'docx' ? 'convert' : 'merge', {
+        tool: pending.kind === 'docx' ? 'pdf-to-word' : 'merge',
+      });
+      pending.resolve(gated);
+      pendingRef.current = null;
+      return gated;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Email delivery failed');
+      onError?.(error.message);
+      throw error;
+    } finally {
+      setIsUploading(false);
+    }
+  }, [onError]);
+
   const resumeAfterVerify = useCallback(async () => {
     const pending = pendingRef.current;
     if (!pending) return null;
@@ -152,13 +195,14 @@ export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOption
   }, []);
 
   const downloadNow = useCallback(() => {
-    if (!result) return;
+    if (!result || result.awaitingEmailLink) return;
     triggerBrowserDownload(result.downloadUrl || result.localBlobUrl, result.fileName);
     trackEvent('download', { tool: result.kind });
   }, [result]);
 
   return {
     gateDownload,
+    submitEmailForDownload,
     resumeAfterVerify,
     cancelPending,
     clearResult,

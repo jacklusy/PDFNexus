@@ -7,5 +7,6 @@ export {
   requestOtp,
   verifyOtp,
   uploadFinalFile,
+  uploadAndEmailDownload,
   triggerBrowserDownload,
 } from './api';

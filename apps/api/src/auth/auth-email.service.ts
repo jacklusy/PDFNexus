@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import {
   ErrorCodes,
@@ -182,14 +183,14 @@ export class AuthEmailService {
 
   async me(email: string | null) {
     if (!email) {
-      return { authenticated: false };
+      return { authenticated: false, verified: false };
     }
 
     const user = await this.prisma.verifiedUser.findUnique({
       where: { email },
     });
     if (!user) {
-      return { authenticated: false };
+      return { authenticated: false, verified: false };
     }
 
     await this.prisma.verifiedUser.update({
@@ -199,8 +200,54 @@ export class AuthEmailService {
 
     return {
       authenticated: true,
+      verified: true,
       email: user.email,
       verifiedAt: user.verifiedAt.toISOString(),
     };
+  }
+
+  /** One-time magic link: email + fileId, 24h TTL in Redis. */
+  async createClaimToken(email: string, fileId: string): Promise<string> {
+    const token = randomBytes(32).toString('hex');
+    await this.redis.client.setex(
+      `auth:claim:${token}`,
+      86_400,
+      JSON.stringify({ email, fileId }),
+    );
+    return token;
+  }
+
+  async consumeClaimToken(
+    token: string,
+  ): Promise<{ email: string; fileId: string } | null> {
+    if (!token || token.length < 16) return null;
+    const key = `auth:claim:${token}`;
+    const raw = await this.redis.client.get(key);
+    if (!raw) return null;
+    await this.redis.client.del(key);
+    try {
+      const parsed = JSON.parse(raw) as { email?: string; fileId?: string };
+      if (!parsed.email || !parsed.fileId) return null;
+      return { email: parsed.email, fileId: parsed.fileId };
+    } catch {
+      return null;
+    }
+  }
+
+  async markEmailVerified(email: string, res: Response): Promise<void> {
+    const now = new Date();
+    await this.prisma.verifiedUser.upsert({
+      where: { email },
+      create: {
+        email,
+        verifiedAt: now,
+        lastSeenAt: now,
+      },
+      update: {
+        verifiedAt: now,
+        lastSeenAt: now,
+      },
+    });
+    this.cookies.setVerifiedEmail(res, email);
   }
 }

@@ -5,6 +5,8 @@ import {
   NotFoundException,
   PayloadTooLargeException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -15,6 +17,8 @@ import { randomUUID } from 'crypto';
 import { ErrorCodes } from '@pdfnexus/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { RedisService } from '../redis/redis.service';
+import { AuthEmailService } from '../auth/auth-email.service';
 import { SEND_FILE_EMAIL_QUEUE } from '../jobs/job.constants';
 
 const PDF_MIME = new Set(['application/pdf']);
@@ -22,6 +26,9 @@ const DOCX_MIME = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/docx',
 ]);
+
+const EMAIL_DELIVERY_LIMIT = 8;
+const EMAIL_DELIVERY_WINDOW_MS = 15 * 60 * 1000;
 
 @Injectable()
 export class FilesService {
@@ -31,6 +38,8 @@ export class FilesService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly config: ConfigService,
+    private readonly redis: RedisService,
+    private readonly auth: AuthEmailService,
     @InjectQueue(SEND_FILE_EMAIL_QUEUE)
     private readonly fileEmailQueue: Queue,
   ) {}
@@ -131,9 +140,15 @@ export class FilesService {
       });
 
       if (sendEmail) {
+        const claimToken = await this.auth.createClaimToken(
+          ownerEmail,
+          record.id,
+        );
+        const apiUrl = this.config.get<string>('API_URL') ?? 'http://localhost:4000';
+        const downloadUrl = `${apiUrl}/api/files/claim-download?token=${claimToken}`;
         await this.fileEmailQueue.add(
           'send-file-email',
-          { fileId: record.id, email: ownerEmail },
+          { fileId: record.id, email: ownerEmail, downloadUrl },
           {
             attempts: 3,
             backoff: { type: 'exponential', delay: 2000 },
@@ -143,6 +158,9 @@ export class FilesService {
         );
       }
 
+      const downloadToken = this.createDownloadToken(updated.id);
+      const apiUrl = this.config.get<string>('API_URL') ?? 'http://localhost:4000';
+
       return {
         id: updated.id,
         kind: updated.kind,
@@ -150,6 +168,8 @@ export class FilesService {
         sizeBytes: updated.sizeBytes,
         status: updated.status,
         expiresAt: updated.expiresAt.toISOString(),
+        downloadUrl: `${apiUrl}/api/files/${updated.id}/download?token=${downloadToken}`,
+        emailQueued: Boolean(sendEmail),
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'upload failed';
@@ -169,6 +189,58 @@ export class FilesService {
       });
       throw err;
     }
+  }
+
+  /**
+   * First-time download: accept email without cookie, upload file, email a
+   * one-click claim link that verifies the address and starts the download.
+   */
+  async uploadForEmailDelivery(
+    email: string,
+    file: Express.Multer.File,
+    clientIp: string,
+  ) {
+    const normalized = email.trim().toLowerCase();
+    if (!normalized || !normalized.includes('@')) {
+      throw new BadRequestException({
+        error: 'Valid email is required',
+        code: ErrorCodes.VALIDATION_ERROR,
+      });
+    }
+
+    const rateKey = `files:email-delivery:${clientIp}:${normalized}`;
+    const limit = await this.redis.rateLimit(
+      rateKey,
+      EMAIL_DELIVERY_LIMIT,
+      EMAIL_DELIVERY_WINDOW_MS,
+    );
+    if (!limit.allowed) {
+      throw new HttpException(
+        {
+          error: 'Too many download emails. Please wait and try again.',
+          code: ErrorCodes.RATE_LIMITED,
+          retryAfterSec: limit.retryAfterSec,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    return this.upload(normalized, file, true);
+  }
+
+  async claimDownloadAndRedirect(
+    token: string,
+  ): Promise<{ email: string; redirectUrl: string }> {
+    const payload = await this.auth.consumeClaimToken(token);
+    if (!payload) {
+      throw new ForbiddenException({
+        error: 'Download link is invalid or has expired',
+        code: ErrorCodes.AUTH_EXPIRED,
+      });
+    }
+
+    const result = await this.getDownload(payload.fileId, payload.email);
+    return { email: payload.email, redirectUrl: result.url };
   }
 
   async getDownload(

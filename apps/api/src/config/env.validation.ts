@@ -19,6 +19,8 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === 'true' || v === '1'),
+  SMTP_USER: z.string().optional().default(''),
+  SMTP_PASS: z.string().optional().default(''),
   S3_ENDPOINT: z.string().url().default('http://localhost:9000'),
   S3_REGION: z.string().default('us-east-1'),
   S3_ACCESS_KEY: z.string().min(1),
