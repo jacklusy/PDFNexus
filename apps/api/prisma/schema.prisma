@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum FileKind {
+  MERGED_PDF
+  DOCX
+}
+
+enum FileStatus {
+  PENDING
+  READY
+  FAILED
+  EXPIRED
+}
+
+enum DownloadChannel {
+  BROWSER
+  EMAIL
+}
+
+model VerifiedUser {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  verifiedAt DateTime
+  lastSeenAt DateTime
+  createdAt  DateTime @default(now())
+}
+
+model EmailVerification {
+  id         String    @id @default(cuid())
+  email      String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email, createdAt])
+}
+
+model StoredFile {
+  id            String     @id @default(cuid())
+  ownerEmail    String
+  kind          FileKind
+  originalName  String
+  storageKey    String
+  sizeBytes     Int
+  status        FileStatus @default(PENDING)
+  processingMs  Int?
+  downloadCount Int        @default(0)
+  createdAt     DateTime   @default(now())
+  expiresAt     DateTime
+  downloads     Download[]
+  logs          ProcessingLog[]
+
+  @@index([ownerEmail, createdAt])
+  @@index([expiresAt, status])
+  @@index([storageKey])
+}
+
+model Download {
+  id        String          @id @default(cuid())
+  fileId    String
+  email     String
+  channel   DownloadChannel
+  createdAt DateTime        @default(now())
+  file      StoredFile      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([fileId, createdAt])
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  type      String
+  tool      String?
+  device    String?
+  browser   String?
+  country   String?
+  sessionId String?
+  createdAt DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([createdAt])
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  type      String
+  rating    Int?
+  message   String
+  email     String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model ProcessingLog {
+  id         String      @id @default(cuid())
+  fileId     String?
+  stage      String
+  status     String
+  errorCode  String?
+  durationMs Int?
+  createdAt  DateTime    @default(now())
+  file       StoredFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
+
+  @@index([fileId, createdAt])
+  @@index([stage, status])
+}
