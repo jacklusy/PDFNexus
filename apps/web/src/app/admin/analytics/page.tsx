@@ -1,11 +1,7 @@
 'use client';
 
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
-import {
-  adminAnalytics,
-  adminDownload,
-  type AnalyticsReport,
-} from '@/features/admin/api';
+import { adminAnalytics, type AnalyticsReport } from '@/features/admin/api';
 import {
   AreaSeriesChart,
   BarSeriesChart,
@@ -16,6 +12,7 @@ import {
   LineSeriesChart,
   LoadingState,
   PageHeader,
+  useAdminExport,
   useUrlFilters,
 } from '@/features/admin/ui';
 import { Button, Card, CardContent, CardHeader, CardTitle } from '@/shared/ui';
@@ -48,7 +45,7 @@ function AnalyticsInner() {
   const { get, getMulti, setMany } = useUrlFilters();
   const [data, setData] = useState<AnalyticsReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const exporter = useAdminExport();
 
   const params = useMemo(() => {
     const days = get('days') || '30';
@@ -102,37 +99,33 @@ function AnalyticsInner() {
               <Button
                 variant="outline"
                 size="sm"
-                loading={exporting}
-                onClick={async () => {
-                  setExporting(true);
-                  try {
-                    await adminDownload(
-                      '/api/admin/analytics/export',
-                      { ...params, format: 'csv' },
-                      'analytics.csv',
-                    );
-                  } finally {
-                    setExporting(false);
-                  }
-                }}
+                loading={exporter.busyKey === 'csv'}
+                disabled={exporter.isExporting}
+                onClick={() =>
+                  void exporter.run({
+                    key: 'csv',
+                    path: '/api/admin/analytics/export',
+                    params: { ...params, format: 'csv' },
+                    filename: 'analytics.csv',
+                    label: 'Analytics (CSV)',
+                  })
+                }
               >
                 Export CSV
               </Button>
               <Button
                 size="sm"
-                loading={exporting}
-                onClick={async () => {
-                  setExporting(true);
-                  try {
-                    await adminDownload(
-                      '/api/admin/analytics/export',
-                      exportParams,
-                      'analytics.xlsx',
-                    );
-                  } finally {
-                    setExporting(false);
-                  }
-                }}
+                loading={exporter.busyKey === 'xlsx'}
+                disabled={exporter.isExporting}
+                onClick={() =>
+                  void exporter.run({
+                    key: 'xlsx',
+                    path: '/api/admin/analytics/export',
+                    params: exportParams,
+                    filename: 'analytics.xlsx',
+                    label: 'Analytics (Excel)',
+                  })
+                }
               >
                 Export Excel
               </Button>
@@ -354,6 +347,7 @@ function AnalyticsInner() {
           </div>
         </>
       )}
+      {exporter.modal}
     </div>
   );
 }

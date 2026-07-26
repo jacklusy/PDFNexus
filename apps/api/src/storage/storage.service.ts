@@ -21,6 +21,21 @@ export interface StoredPart {
   sizeBytes: number;
 }
 
+/**
+ * RFC 6266 Content-Disposition with an ASCII fallback plus UTF-8 `filename*`,
+ * so downloads keep the original name instead of the opaque storage key.
+ */
+function contentDispositionHeader(
+  fileName: string,
+  disposition: 'attachment' | 'inline',
+): string {
+  const asciiFallback = fileName
+    .replace(/[^\x20-\x7e]/g, '_')
+    .replace(/["\\]/g, '');
+  const encoded = encodeURIComponent(fileName);
+  return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+}
+
 @Injectable()
 export class StorageService implements OnModuleInit {
   private readonly logger = new Logger(StorageService.name);
@@ -113,10 +128,29 @@ export class StorageService implements OnModuleInit {
     );
   }
 
-  async presignGet(key: string, expiresInSec = 900): Promise<string> {
+  async presignGet(
+    key: string,
+    expiresInSec = 900,
+    options?: {
+      fileName?: string;
+      contentType?: string;
+      disposition?: 'attachment' | 'inline';
+    },
+  ): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,
+      ...(options?.contentType
+        ? { ResponseContentType: options.contentType }
+        : {}),
+      ...(options?.fileName
+        ? {
+            ResponseContentDisposition: contentDispositionHeader(
+              options.fileName,
+              options.disposition ?? 'attachment',
+            ),
+          }
+        : {}),
     });
     return getSignedUrl(this.client, command, { expiresIn: expiresInSec });
   }

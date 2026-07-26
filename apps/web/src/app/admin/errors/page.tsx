@@ -1,11 +1,7 @@
 'use client';
 
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
-import {
-  adminDownload,
-  adminErrors,
-  adminResolveError,
-} from '@/features/admin/api';
+import { adminErrors, adminResolveError } from '@/features/admin/api';
 import {
   DataTable,
   ErrorState,
@@ -13,6 +9,7 @@ import {
   LoadingState,
   PageHeader,
   SeverityBadge,
+  useAdminExport,
   useUrlFilters,
   type DataColumn,
 } from '@/features/admin/ui';
@@ -48,7 +45,7 @@ function ErrorsInner() {
     pageSize: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const exporter = useAdminExport();
 
   const page = Math.max(1, Number(get('page') || 1));
   const pageSize = Math.max(10, Number(get('pageSize') || 25));
@@ -141,19 +138,17 @@ function ErrorsInner() {
         actions={
           <Button
             size="sm"
-            loading={exporting}
-            onClick={async () => {
-              setExporting(true);
-              try {
-                await adminDownload(
-                  '/api/admin/errors/export',
-                  { ...params, format: 'xlsx' },
-                  'errors.xlsx',
-                );
-              } finally {
-                setExporting(false);
-              }
-            }}
+            loading={exporter.busyKey === 'xlsx'}
+            disabled={exporter.isExporting}
+            onClick={() =>
+              void exporter.run({
+                key: 'xlsx',
+                path: '/api/admin/errors/export',
+                params: { ...params, format: 'xlsx' },
+                filename: 'errors.xlsx',
+                label: 'Error log (Excel)',
+              })
+            }
           >
             Export
           </Button>
@@ -209,6 +204,7 @@ function ErrorsInner() {
           />
         </div>
       )}
+      {exporter.modal}
     </div>
   );
 }

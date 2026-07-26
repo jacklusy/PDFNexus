@@ -152,6 +152,28 @@ body {
   border-width: 0;
 }
 
+@keyframes progress-indeterminate {
+  0% {
+    left: -40%;
+    width: 40%;
+  }
+  50% {
+    left: 25%;
+    width: 55%;
+  }
+  100% {
+    left: 100%;
+    width: 40%;
+  }
+}
+
+.progress-indeterminate-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  animation: progress-indeterminate 1.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -160,5 +182,11 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .progress-indeterminate-bar {
+    left: 0;
+    width: 100%;
+    opacity: 0.5;
   }
 }

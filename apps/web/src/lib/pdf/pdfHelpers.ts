@@ -638,12 +638,15 @@ export async function renderThumbnailsForPages(
 
 export async function mergePDFPages(
   pages: PDFPageItem[],
-  fileStore: FileStore
+  fileStore: FileStore,
+  onProgress?: (current: number, total: number) => void
 ): Promise<Uint8Array> {
   const mergedPdf = await PDFDocument.create();
   const loadedDocs: { [fileId: string]: PDFDocument } = {};
 
-  for (const pageItem of pages) {
+  for (let i = 0; i < pages.length; i++) {
+    const pageItem = pages[i];
+    onProgress?.(i, pages.length);
     if (pageItem.isBlank) {
       mergedPdf.addPage([595.28, 841.89]);
       continue;
@@ -714,6 +717,8 @@ export async function mergePDFPages(
 
     mergedPdf.addPage(copiedPage);
   }
+
+  onProgress?.(pages.length, pages.length);
 
   const actualPageCount = mergedPdf.getPageCount();
   if (actualPageCount !== pages.length) {

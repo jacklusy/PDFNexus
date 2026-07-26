@@ -1,13 +1,14 @@
 'use client';
 
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
-import { adminAudit, adminDownload } from '@/features/admin/api';
+import { adminAudit } from '@/features/admin/api';
 import {
   DataTable,
   ErrorState,
   FilterBar,
   LoadingState,
   PageHeader,
+  useAdminExport,
   useUrlFilters,
   type DataColumn,
 } from '@/features/admin/ui';
@@ -37,7 +38,7 @@ function AuditInner() {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AuditRow | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const exporter = useAdminExport();
 
   const page = Math.max(1, Number(get('page') || 1));
   const pageSize = Math.max(10, Number(get('pageSize') || 25));
@@ -114,19 +115,17 @@ function AuditInner() {
         actions={
           <Button
             size="sm"
-            loading={exporting}
-            onClick={async () => {
-              setExporting(true);
-              try {
-                await adminDownload(
-                  '/api/admin/audit/export',
-                  { ...params, format: 'xlsx' },
-                  'audit.xlsx',
-                );
-              } finally {
-                setExporting(false);
-              }
-            }}
+            loading={exporter.busyKey === 'xlsx'}
+            disabled={exporter.isExporting}
+            onClick={() =>
+              void exporter.run({
+                key: 'xlsx',
+                path: '/api/admin/audit/export',
+                params: { ...params, format: 'xlsx' },
+                filename: 'audit.xlsx',
+                label: 'Audit log (Excel)',
+              })
+            }
           >
             Export
           </Button>
@@ -202,6 +201,7 @@ function AuditInner() {
           </div>
         ) : null}
       </Dialog>
+      {exporter.modal}
     </div>
   );
 }

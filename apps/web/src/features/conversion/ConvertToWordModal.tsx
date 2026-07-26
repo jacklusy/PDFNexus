@@ -122,8 +122,11 @@ export default function ConvertToWordModal({
       trackEvent('convert', { tool: 'pdf-to-word' });
 
       if (onRequestGatedDownload) {
-        await onRequestGatedDownload(docxBlob, outputFileName);
+        // Conversion UI is done; close it and hand the blob to the shared
+        // transfer modal so the two dialogs never stack.
+        setIsConverting(false);
         onClose();
+        void onRequestGatedDownload(docxBlob, outputFileName);
         return;
       }
 

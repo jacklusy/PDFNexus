@@ -1,11 +1,7 @@
 'use client';
 
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
-import {
-  adminDownload,
-  adminLogs,
-  type HttpLogRow,
-} from '@/features/admin/api';
+import { adminLogs, type HttpLogRow } from '@/features/admin/api';
 import {
   CopyValue,
   DataTable,
@@ -14,6 +10,7 @@ import {
   LoadingState,
   PageHeader,
   SeverityBadge,
+  useAdminExport,
   useUrlFilters,
   type DataColumn,
 } from '@/features/admin/ui';
@@ -37,7 +34,7 @@ function LogsInner() {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [exporting, setExporting] = useState(false);
+  const exporter = useAdminExport();
 
   const page = Math.max(1, Number(get('page') || 1));
   const pageSize = Math.max(10, Number(get('pageSize') || 25));
@@ -144,37 +141,33 @@ function LogsInner() {
             <Button
               variant="outline"
               size="sm"
-              loading={exporting}
-              onClick={async () => {
-                setExporting(true);
-                try {
-                  await adminDownload(
-                    '/api/admin/logs/export',
-                    { ...params, format: 'csv' },
-                    'request-logs.csv',
-                  );
-                } finally {
-                  setExporting(false);
-                }
-              }}
+              loading={exporter.busyKey === 'csv'}
+              disabled={exporter.isExporting}
+              onClick={() =>
+                void exporter.run({
+                  key: 'csv',
+                  path: '/api/admin/logs/export',
+                  params: { ...params, format: 'csv' },
+                  filename: 'request-logs.csv',
+                  label: 'Request logs (CSV)',
+                })
+              }
             >
               Export CSV
             </Button>
             <Button
               size="sm"
-              loading={exporting}
-              onClick={async () => {
-                setExporting(true);
-                try {
-                  await adminDownload(
-                    '/api/admin/logs/export',
-                    { ...params, format: 'xlsx' },
-                    'request-logs.xlsx',
-                  );
-                } finally {
-                  setExporting(false);
-                }
-              }}
+              loading={exporter.busyKey === 'xlsx'}
+              disabled={exporter.isExporting}
+              onClick={() =>
+                void exporter.run({
+                  key: 'xlsx',
+                  path: '/api/admin/logs/export',
+                  params: { ...params, format: 'xlsx' },
+                  filename: 'request-logs.xlsx',
+                  label: 'Request logs (Excel)',
+                })
+              }
             >
               Export Excel
             </Button>
@@ -302,6 +295,7 @@ function LogsInner() {
           />
         </div>
       )}
+      {exporter.modal}
     </div>
   );
 }

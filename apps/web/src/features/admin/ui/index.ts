@@ -9,6 +9,8 @@ export { SeverityBadge } from './SeverityBadge';
 export { DateRangePicker } from './DateRangePicker';
 export { FilterBar, useUrlFilters } from './FilterBar';
 export type { FilterDef } from './FilterBar';
+export { useAdminExport } from './useAdminExport';
+export type { RunExportArgs, UseAdminExportResult } from './useAdminExport';
 export {
   ChartFrame,
   AreaSeriesChart,

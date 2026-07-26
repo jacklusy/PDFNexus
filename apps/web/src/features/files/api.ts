@@ -43,6 +43,17 @@ export function mimeTypeForKind(kind: FileKind): string {
     : 'application/pdf';
 }
 
+/**
+ * Choose the URL to download from: prefer the in-memory blob (instant and
+ * reliable) and fall back to the resolved presigned URL.
+ */
+export function resolveDownloadTarget(result: {
+  localBlobUrl?: string;
+  downloadUrl?: string;
+}): string | null {
+  return result.localBlobUrl || result.downloadUrl || null;
+}
+
 export function triggerBrowserDownload(url: string, fileName: string): void {
   const link = document.createElement('a');
   link.href = url;

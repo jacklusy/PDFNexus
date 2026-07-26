@@ -79,7 +79,15 @@ export class FilesService {
       });
     }
 
-    const url = await this.storage.presignGet(file.storageKey, 900);
+    const contentType =
+      file.kind === 'DOCX'
+        ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        : 'application/pdf';
+    const url = await this.storage.presignGet(file.storageKey, 900, {
+      fileName: file.originalName,
+      contentType,
+      disposition: 'attachment',
+    });
 
     await this.prisma.$transaction([
       this.prisma.storedFile.update({

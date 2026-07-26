@@ -3,9 +3,12 @@
 import { mergePDFPages } from '@/lib/pdf/pdfHelpers';
 import type { FileStore, PDFPageItem } from '@/lib/types';
 
+export type MergeProgressHandler = (current: number, total: number) => void;
+
 export async function compileMergedPdf(
   pages: PDFPageItem[],
-  fileStore: FileStore
+  fileStore: FileStore,
+  onProgress?: MergeProgressHandler
 ): Promise<{ bytes: Uint8Array; blob: Blob }> {
   // Prefer dedicated worker when available; fall back to main thread for
   // unsupported images (canvas) or environments without Worker support.
@@ -20,7 +23,7 @@ export async function compileMergedPdf(
 
   if (canUseWorker) {
     try {
-      const bytes = await mergeViaWorker(pages, fileStore);
+      const bytes = await mergeViaWorker(pages, fileStore, onProgress);
       const blob = new Blob([bytes], { type: 'application/pdf' });
       return { bytes, blob };
     } catch (err) {
@@ -28,14 +31,15 @@ export async function compileMergedPdf(
     }
   }
 
-  const bytes = await mergePDFPages(pages, fileStore);
+  const bytes = await mergePDFPages(pages, fileStore, onProgress);
   const blob = new Blob([bytes], { type: 'application/pdf' });
   return { bytes, blob };
 }
 
 function mergeViaWorker(
   pages: PDFPageItem[],
-  fileStore: FileStore
+  fileStore: FileStore,
+  onProgress?: MergeProgressHandler
 ): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const id = Math.random().toString(36).slice(2);
@@ -51,6 +55,10 @@ function mergeViaWorker(
     worker.onmessage = (event: MessageEvent) => {
       const data = event.data;
       if (data?.id !== id) return;
+      if (data.type === 'progress') {
+        onProgress?.(data.current, data.total);
+        return;
+      }
       clearTimeout(timer);
       worker.terminate();
       if (data.ok) {

@@ -19,7 +19,11 @@ const SPEED_TAU_MS = 3000;
 
 const UPLOAD_TOKEN_HEADER = 'X-Upload-Token';
 
+export type UploadStage = 'initiating' | 'uploading' | 'finalizing';
+
 export interface UploadProgress {
+  /** Coarse phase of the multipart lifecycle. */
+  stage: UploadStage;
   percent: number;
   bytesSent: number;
   totalBytes: number;
@@ -27,6 +31,8 @@ export interface UploadProgress {
   speedBps: number;
   /** Estimated seconds remaining; null until a stable speed exists. */
   etaSeconds: number | null;
+  completedParts?: number;
+  totalParts?: number;
 }
 
 export interface DirectUploadOptions {
@@ -66,15 +72,22 @@ class ProgressTracker {
   private lastEmitAt = 0;
   private lastBytes = 0;
   private speedBps = 0;
+  private completedParts = 0;
 
   constructor(
     private readonly totalBytes: number,
+    private readonly totalParts: number,
     private readonly onProgress?: (progress: UploadProgress) => void,
   ) {}
 
   setPartLoaded(partNumber: number, loaded: number): void {
     this.partLoaded.set(partNumber, loaded);
     this.emit();
+  }
+
+  setCompletedParts(count: number): void {
+    this.completedParts = count;
+    this.emit(true);
   }
 
   private bytesSent(): number {
@@ -103,6 +116,7 @@ class ProgressTracker {
 
     const remaining = this.totalBytes - bytes;
     this.onProgress({
+      stage: 'uploading',
       percent: this.totalBytes
         ? Math.min(100, Math.round((bytes / this.totalBytes) * 100))
         : 100,
@@ -111,11 +125,27 @@ class ProgressTracker {
       speedBps: this.speedBps,
       etaSeconds:
         this.speedBps > 1 ? Math.round(remaining / this.speedBps) : null,
+      completedParts: this.completedParts,
+      totalParts: this.totalParts,
     });
   }
 
   finish(): void {
     this.emit(true);
+  }
+
+  /** Emit a terminal `finalizing` update while the server completes the upload. */
+  emitFinalizing(): void {
+    this.onProgress?.({
+      stage: 'finalizing',
+      percent: 100,
+      bytesSent: this.totalBytes,
+      totalBytes: this.totalBytes,
+      speedBps: 0,
+      etaSeconds: 0,
+      completedParts: this.totalParts,
+      totalParts: this.totalParts,
+    });
   }
 }
 
@@ -222,6 +252,17 @@ export function uploadFileDirect(
   };
 
   const promise = (async (): Promise<CompleteUploadResponse> => {
+    // Emit an immediate `initiating` update so the UI can offer Cancel before
+    // the first byte leaves the browser (initiate/complete are cancellable too).
+    options.onProgress?.({
+      stage: 'initiating',
+      percent: 0,
+      bytesSent: 0,
+      totalBytes: blob.size,
+      speedBps: 0,
+      etaSeconds: null,
+    });
+
     const init = await apiFetch<InitiateUploadResponse>(
       '/api/files/uploads/initiate',
       {
@@ -246,7 +287,11 @@ export function uploadFileDirect(
     };
     sessionCtx = ctx;
 
-    const tracker = new ProgressTracker(blob.size, options.onProgress);
+    const tracker = new ProgressTracker(
+      blob.size,
+      ctx.totalParts,
+      options.onProgress,
+    );
     const completed = new Set<number>();
 
     const uploadPart = async (partNumber: number): Promise<void> => {
@@ -262,6 +307,7 @@ export function uploadFileDirect(
           throwIfAborted();
           const etag = await putPart(url, chunk, partNumber, tracker, inflight);
           completed.add(partNumber);
+          tracker.setCompletedParts(completed.size);
           await apiFetch(`/api/files/uploads/${ctx.sessionId}/parts/${partNumber}`, {
             method: 'POST',
             headers: {
@@ -337,6 +383,7 @@ export function uploadFileDirect(
     }
 
     throwIfAborted();
+    tracker.emitFinalizing();
     const result = await apiFetch<CompleteUploadResponse>(
       `/api/files/uploads/${ctx.sessionId}/complete`,
       { method: 'POST', headers: sessionHeaders(ctx) },

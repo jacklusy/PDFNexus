@@ -84,6 +84,15 @@ async function bootstrap() {
       'X-Requested-With',
       'X-Upload-Token',
     ],
+    // Expose export/streaming headers so the client can show truncation
+    // warnings and determinate download progress cross-origin.
+    exposedHeaders: [
+      'Content-Length',
+      'Content-Disposition',
+      'X-Export-Truncated',
+      'X-Export-Total',
+      'X-Export-Count',
+    ],
     maxAge: 600,
   });
 

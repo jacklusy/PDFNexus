@@ -31,9 +31,16 @@ import FullScreenPreviewModal from '@/components/FullScreenPreviewModal';
 import { compileMergedPdf, MERGE_OUTPUT_NAME, PreviewOrderModal } from '@/features/merge';
 import {
   EmailVerifyModal,
-  DownloadSuccessModal,
   useDownloadGate,
+  type GatedDownloadResult,
 } from '@/features/files';
+import type { UploadProgress } from '@/features/files';
+import {
+  TransferProgressModal,
+  useTransferOperation,
+  type TransferStageStep,
+} from '@/features/transfer';
+import type { FileKind } from '@pdfnexus/shared';
 import { ConfirmDialog, useToast } from '@/shared/ui';
 import { trackEvent } from '@/lib/analytics';
 import VirtualizedPageGrid from '@/features/workspace/VirtualizedPageGrid';
@@ -43,21 +50,18 @@ const ConvertToWordModal = dynamic(
   { ssr: false }
 );
 
-function formatTransferBytes(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${bytes} B`;
-}
+const MERGE_STEPS: TransferStageStep[] = [
+  { key: 'processing', label: 'Compiling pages' },
+  { key: 'preparing', label: 'Preparing upload' },
+  { key: 'uploading', label: 'Uploading' },
+  { key: 'finalizing', label: 'Finalizing' },
+];
 
-function formatTransferSpeed(bps: number): string {
-  return bps > 0 ? `${formatTransferBytes(bps)}/s` : '—';
-}
-
-function formatTransferEta(seconds: number | null): string {
-  if (seconds === null || !Number.isFinite(seconds)) return 'ETA —';
-  if (seconds >= 60) return `ETA ${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-  return `ETA ${seconds}s`;
-}
+const UPLOAD_STEPS: TransferStageStep[] = [
+  { key: 'preparing', label: 'Preparing upload' },
+  { key: 'uploading', label: 'Uploading' },
+  { key: 'finalizing', label: 'Finalizing' },
+];
 
 export default function WorkspaceApp() {
   const toast = useToast();
@@ -125,14 +129,61 @@ export default function WorkspaceApp() {
   }, []);
 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isMerging, setIsMerging] = useState(false);
-  const [mergeStep, setMergeStep] = useState('');
   const [isDragActive, setIsDragActive] = useState(false);
   const [isConvertToWordOpen, setIsConvertToWordOpen] = useState(false);
   const [isPreviewPageOrderOpen, setIsPreviewPageOrderOpen] = useState(false);
   const [fullscreenPageId, setFullscreenPageId] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [verifyOpen, setVerifyOpen] = useState(false);
+  const [transferFile, setTransferFile] = useState<{
+    name: string;
+    kind: FileKind;
+  } | null>(null);
+  const [retryTransfer, setRetryTransfer] = useState<(() => void) | null>(null);
+
+  const transfer = useTransferOperation();
+  const verifyOpenRef = useRef(verifyOpen);
+  verifyOpenRef.current = verifyOpen;
+
+  // Map real upload progress onto the shared transfer state machine and, on the
+  // first byte, hand off from the email-verify modal to the progress modal so
+  // the two never stack.
+  const handleUploadProgress = useCallback(
+    (p: UploadProgress) => {
+      if (verifyOpenRef.current) setVerifyOpen(false);
+      const phase =
+        p.stage === 'finalizing'
+          ? 'finalizing'
+          : p.stage === 'initiating'
+            ? 'preparing'
+            : 'uploading';
+      const showParts = p.totalParts != null && p.totalParts > 1;
+      transfer.update({
+        phase,
+        stageLabel:
+          p.stage === 'finalizing'
+            ? 'Finalizing on server…'
+            : p.stage === 'initiating'
+              ? 'Preparing secure upload…'
+              : 'Uploading file',
+        percent:
+          p.stage === 'uploading'
+            ? p.percent
+            : p.stage === 'finalizing'
+              ? 100
+              : null,
+        bytesSent: p.bytesSent,
+        totalBytes: p.totalBytes,
+        speedBps: p.speedBps,
+        etaSeconds: p.etaSeconds,
+        unitLabel: 'Parts',
+        unitsDone: showParts ? p.completedParts : undefined,
+        unitsTotal: showParts ? p.totalParts : undefined,
+        canCancel: p.stage !== 'finalizing',
+      });
+    },
+    [transfer]
+  );
 
   const {
     gateDownload,
@@ -141,13 +192,49 @@ export default function WorkspaceApp() {
     cancelUpload,
     clearResult,
     downloadNow,
-    isUploading,
-    uploadProgress,
     result: gatedResult,
   } = useDownloadGate({
     onNeedVerify: () => setVerifyOpen(true),
     onError: (msg) => toast.error('Download failed', msg),
+    onUploadProgress: handleUploadProgress,
   });
+
+  const finishTransferSuccess = useCallback(
+    (gated: GatedDownloadResult) => {
+      transfer.succeed({
+        stageLabel: gated.awaitingEmailLink ? 'Sent to your email' : 'Ready',
+        percent: 100,
+      });
+    },
+    [transfer]
+  );
+
+  const handleTransferError = useCallback(
+    (err: unknown) => {
+      if (err instanceof Error && err.message === 'Verification cancelled') {
+        transfer.reset();
+        return;
+      }
+      if (err instanceof Error && err.name === 'UploadCancelledError') {
+        transfer.markCancelled({ stageLabel: 'Cancelled' });
+        return;
+      }
+      console.error('Transfer failure:', err);
+      transfer.fail(
+        err instanceof Error && err.message
+          ? err.message
+          : 'The transfer failed. Please try again.'
+      );
+    },
+    [transfer]
+  );
+
+  const closeTransfer = useCallback(() => {
+    transfer.reset();
+    clearResult();
+    setTransferFile(null);
+    setRetryTransfer(null);
+  }, [transfer, clearResult]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -579,49 +666,103 @@ export default function WorkspaceApp() {
     setConfirmClearOpen(false);
   };
 
-  const handleMergeAndCompile = async () => {
-    if (pages.length === 0) return;
-    setIsMerging(true);
-    setMergeStep('Initializing PDF engine...');
+  const handleMergeAndCompile = useCallback(async () => {
+    const currentPages = pagesRef.current;
+    const currentStore = fileStoreRef.current;
+    if (currentPages.length === 0) return;
+    const total = currentPages.length;
+    setTransferFile({ name: MERGE_OUTPUT_NAME, kind: 'merged_pdf' });
+    setRetryTransfer(() => () => void handleMergeAndCompile());
+    transfer.begin({
+      phase: 'processing',
+      stageLabel: `Compiling pages 0 / ${total}`,
+      percent: 0,
+      unitsTotal: total,
+      unitsDone: 0,
+      unitLabel: 'Pages',
+      canCancel: false,
+    });
     try {
-      await new Promise((r) => setTimeout(r, 200));
-      setMergeStep('Extracting original high-quality document streams...');
-      await new Promise((r) => setTimeout(r, 200));
-      setMergeStep('Bundling pages & preserving original vector grids...');
-      const { blob } = await compileMergedPdf(pages, fileStore);
-      setMergeStep('Preparing secure download…');
-      await gateDownload({
+      const { blob } = await compileMergedPdf(
+        currentPages,
+        currentStore,
+        (current, t) => {
+          transfer.update({
+            phase: 'processing',
+            stageLabel: `Compiling pages ${current} / ${t}`,
+            percent: t ? Math.round((current / t) * 100) : null,
+            unitsDone: current,
+            unitsTotal: t,
+            unitLabel: 'Pages',
+          });
+        }
+      );
+      transfer.update({
+        phase: 'preparing',
+        stageLabel: 'Preparing secure upload…',
+        percent: null,
+        canCancel: true,
+        unitsDone: undefined,
+        unitsTotal: undefined,
+      });
+      transfer.setCancelHandler(cancelUpload);
+      const gated = await gateDownload({
         blob,
         fileName: MERGE_OUTPUT_NAME,
         kind: 'merged_pdf',
-        pageCount: pages.length,
+        pageCount: total,
       });
+      finishTransferSuccess(gated);
     } catch (err) {
-      if (
-        err instanceof Error &&
-        (err.message === 'Verification cancelled' ||
-          err.name === 'UploadCancelledError')
-      ) {
-        return;
-      }
-      console.error('Merge failure:', err);
-      toast.error(
-        'Merge failed',
-        'Ensure source files are accessible and not password-protected.'
-      );
-    } finally {
-      setIsMerging(false);
-      setMergeStep('');
+      handleTransferError(err);
     }
-  };
+  }, [
+    transfer,
+    cancelUpload,
+    gateDownload,
+    finishTransferSuccess,
+    handleTransferError,
+  ]);
 
-  const handleWordGatedDownload = async (blob: Blob, fileName: string) => {
-    await gateDownload({ blob, fileName, kind: 'docx' });
-  };
+  const handleWordGatedDownload = useCallback(
+    async (blob: Blob, fileName: string) => {
+      setTransferFile({ name: fileName, kind: 'docx' });
+      setRetryTransfer(null);
+      transfer.begin({
+        phase: 'preparing',
+        stageLabel: 'Preparing secure upload…',
+        percent: null,
+        canCancel: true,
+      });
+      transfer.setCancelHandler(cancelUpload);
+      try {
+        const gated = await gateDownload({ blob, fileName, kind: 'docx' });
+        finishTransferSuccess(gated);
+      } catch (err) {
+        handleTransferError(err);
+      }
+    },
+    [transfer, cancelUpload, gateDownload, finishTransferSuccess, handleTransferError]
+  );
 
-  const handleSubmitVerifyEmail = async (email: string) => {
-    await submitEmailForDownload(email);
-  };
+  const handleSubmitVerifyEmail = useCallback(
+    async (email: string) => {
+      transfer.update({
+        phase: 'preparing',
+        stageLabel: 'Preparing secure upload…',
+        canCancel: true,
+      });
+      transfer.setCancelHandler(cancelUpload);
+      await submitEmailForDownload(email);
+    },
+    [transfer, cancelUpload, submitEmailForDownload]
+  );
+
+  const handleTransferOpen = useCallback(() => {
+    if (gatedResult?.localBlobUrl) {
+      window.open(gatedResult.localBlobUrl, '_blank', 'noopener');
+    }
+  }, [gatedResult]);
 
   const handleTriggerUpload = () => fileInputRef.current?.click();
 
@@ -740,10 +881,10 @@ export default function WorkspaceApp() {
               <button
                 type="button"
                 onClick={() => void handleMergeAndCompile()}
-                disabled={isMerging || isUploading}
+                disabled={transfer.isActive}
                 className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-teal-700 px-4.5 py-1.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-teal-800 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
               >
-                {isMerging || isUploading ? (
+                {transfer.isActive ? (
                   <>
                     <Loader2 className="h-3.5 w-3.5 animate-spin" /> Compiling...
                   </>
@@ -900,66 +1041,28 @@ export default function WorkspaceApp() {
         }}
       />
 
-      <AnimatePresence>
-        {(isMerging || isUploading) && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/80 p-6 backdrop-blur-sm"
-          >
-            <div className="flex w-full max-w-sm flex-col items-center rounded-2xl bg-white p-8 text-center shadow-2xl">
-              <Loader2 className="mb-4 h-10 w-10 animate-spin text-teal-700" />
-              <h3 className="text-base font-extrabold text-slate-900">
-                {isUploading ? 'Uploading final file…' : 'Merging Pages...'}
-              </h3>
-              <p className="mt-1 text-xs text-slate-400">Please keep this window open.</p>
-              {isUploading && uploadProgress ? (
-                <>
-                  <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-1.5 rounded-full bg-teal-700 transition-all duration-300 ease-out"
-                      style={{ width: `${uploadProgress.percent}%` }}
-                    />
-                  </div>
-                  <div className="mt-3 flex w-full items-center justify-between font-mono text-[10px] text-slate-500">
-                    <span>
-                      {formatTransferBytes(uploadProgress.bytesSent)} /{' '}
-                      {formatTransferBytes(uploadProgress.totalBytes)}
-                    </span>
-                    <span>{formatTransferSpeed(uploadProgress.speedBps)}</span>
-                    <span>{formatTransferEta(uploadProgress.etaSeconds)}</span>
-                    <span className="font-bold text-teal-800">
-                      {uploadProgress.percent}%
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={cancelUpload}
-                    className="mt-5 cursor-pointer rounded-lg border border-slate-200 px-4 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
-                  >
-                    Cancel Upload
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                    <div className="mx-auto h-1.5 w-3/4 animate-pulse rounded-full bg-teal-700" />
-                  </div>
-                  <span className="mt-4 max-w-full truncate rounded-full border border-teal-100 bg-teal-50 px-3 py-1 text-[10px] font-bold text-teal-800">
-                    {isUploading ? 'Preparing secure upload…' : mergeStep}
-                  </span>
-                </>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <DownloadSuccessModal
-        result={gatedResult}
-        onClose={clearResult}
-        onDownload={downloadNow}
+      <TransferProgressModal
+        open={transfer.state.phase !== 'idle' && !verifyOpen}
+        state={transfer.state}
+        fileName={transferFile?.name ?? gatedResult?.fileName ?? 'Your file'}
+        fileKind={transferFile?.kind === 'docx' ? 'Word' : 'PDF'}
+        steps={transferFile?.kind === 'docx' ? UPLOAD_STEPS : MERGE_STEPS}
+        activeStepKey={
+          transfer.state.phase === 'cancelling' ? undefined : transfer.state.phase
+        }
+        emailNote={
+          gatedResult?.awaitingEmailLink
+            ? 'Check your email — click “Download your file” in the message to finish.'
+            : gatedResult?.emailQueued
+              ? 'A copy was also sent to your verified email.'
+              : null
+        }
+        onCancel={() => transfer.requestCancel()}
+        onClose={closeTransfer}
+        onDownload={gatedResult?.awaitingEmailLink ? undefined : downloadNow}
+        onOpen={gatedResult?.awaitingEmailLink ? undefined : handleTransferOpen}
+        onRetry={retryTransfer ?? undefined}
+        downloadDisabled={Boolean(gatedResult?.awaitingEmailLink)}
       />
 
       <EmailVerifyModal

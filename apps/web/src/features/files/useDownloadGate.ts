@@ -4,7 +4,12 @@ import { useCallback, useRef, useState } from 'react';
 import type { CompleteUploadResponse, FileKind } from '@pdfnexus/shared';
 import { trackEvent } from '@/lib/analytics';
 import { revokeObjectUrl, trackObjectUrl } from '@/lib/pdf/pdfHelpers';
-import { getAuthMe, mimeTypeForKind, triggerBrowserDownload } from './api';
+import {
+  getAuthMe,
+  mimeTypeForKind,
+  resolveDownloadTarget,
+  triggerBrowserDownload,
+} from './api';
 import {
   uploadFileDirect,
   UploadCancelledError,
@@ -27,6 +32,8 @@ export interface GatedDownloadResult {
 export interface UseDownloadGateOptions {
   onNeedVerify: () => void;
   onError?: (message: string) => void;
+  /** Streamed real upload progress (initiating → uploading → finalizing). */
+  onUploadProgress?: (progress: UploadProgress) => void;
 }
 
 type PendingUpload = {
@@ -44,7 +51,11 @@ type PendingUpload = {
  * 2. If not verified → EmailVerifyModal (email only) → branded download email
  * 3. If verified → direct-to-storage multipart upload → immediate download
  */
-export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOptions) {
+export function useDownloadGate({
+  onNeedVerify,
+  onError,
+  onUploadProgress,
+}: UseDownloadGateOptions) {
   const pendingRef = useRef<PendingUpload | null>(null);
   const uploadHandleRef = useRef<DirectUploadHandle | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -71,7 +82,10 @@ export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOption
         fileName,
         mimeType: mimeTypeForKind(kind),
         ...(email ? { email, sendEmail: true } : {}),
-        onProgress: setUploadProgress,
+        onProgress: (p) => {
+          setUploadProgress(p);
+          onUploadProgress?.(p);
+        },
       });
       uploadHandleRef.current = handle;
       try {
@@ -82,7 +96,7 @@ export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOption
         setUploadProgress(null);
       }
     },
-    []
+    [onUploadProgress]
   );
 
   const uploadAndFinish = useCallback(
@@ -227,7 +241,11 @@ export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOption
 
   const downloadNow = useCallback(() => {
     if (!result || result.awaitingEmailLink) return;
-    triggerBrowserDownload(result.downloadUrl || result.localBlobUrl, result.fileName);
+    // The compiled blob is always in memory here, so it downloads instantly and
+    // reliably; the presigned URL is only a fallback if the blob was revoked.
+    const url = resolveDownloadTarget(result);
+    if (!url) return;
+    triggerBrowserDownload(url, result.fileName);
     trackEvent('download', { tool: result.kind });
   }, [result]);
 

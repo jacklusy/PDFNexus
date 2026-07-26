@@ -22,17 +22,21 @@ export type MergeWorkerRequest = {
 };
 
 export type MergeWorkerResponse =
+  | { id: string; type: 'progress'; current: number; total: number }
   | { id: string; ok: true; bytes: ArrayBuffer }
   | { id: string; ok: false; error: string };
 
 async function mergeInWorker(
   pages: MergeWorkerRequest['pages'],
-  fileStore: Record<string, ArrayBuffer>
+  fileStore: Record<string, ArrayBuffer>,
+  onProgress?: (current: number, total: number) => void
 ): Promise<Uint8Array> {
   const mergedPdf = await PDFDocument.create();
   const loadedDocs: Record<string, PDFDocument> = {};
 
-  for (const pageItem of pages) {
+  for (let i = 0; i < pages.length; i++) {
+    const pageItem = pages[i];
+    onProgress?.(i, pages.length);
     if (pageItem.isBlank) {
       mergedPdf.addPage([595.28, 841.89]);
       continue;
@@ -79,6 +83,7 @@ async function mergeInWorker(
     mergedPdf.addPage(copiedPage);
   }
 
+  onProgress?.(pages.length, pages.length);
   if (mergedPdf.getPageCount() !== pages.length) {
     throw new Error('Page count mismatch');
   }
@@ -88,7 +93,15 @@ async function mergeInWorker(
 self.onmessage = async (event: MessageEvent<MergeWorkerRequest>) => {
   const { id, pages, files } = event.data;
   try {
-    const bytes = await mergeInWorker(pages, files);
+    const bytes = await mergeInWorker(pages, files, (current, total) => {
+      const progress: MergeWorkerResponse = {
+        id,
+        type: 'progress',
+        current,
+        total,
+      };
+      (self as DedicatedWorkerGlobalScope).postMessage(progress);
+    });
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     const buffer = copy.buffer;

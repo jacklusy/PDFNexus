@@ -1,4 +1,4 @@
-import { apiFetch, apiPostJson, getApiBase } from '@/lib/api';
+import { ApiError, apiFetch, apiPostJson, getApiBase } from '@/lib/api';
 
 export type AdminMe = {
   id: string;
@@ -269,18 +269,115 @@ export function adminExportUrl(
   return `${getApiBase()}${path}${qs(params)}`;
 }
 
-/** Download authenticated export via fetch (cookies included). */
+export interface AdminDownloadProgress {
+  /** 0-100, or null when the response length is unknown (indeterminate). */
+  percent: number | null;
+  receivedBytes: number;
+  totalBytes: number | null;
+}
+
+export interface AdminDownloadResult {
+  truncated: boolean;
+  total: number | null;
+  exported: number | null;
+}
+
+export interface AdminDownloadOptions {
+  filename?: string;
+  signal?: AbortSignal;
+  onProgress?: (progress: AdminDownloadProgress) => void;
+}
+
+/**
+ * Download an authenticated export (cookies included). Streams the response
+ * body against `Content-Length` for determinate progress when available, reads
+ * truncation headers, and triggers the browser download.
+ */
 export async function adminDownload(
   path: string,
   params?: Record<string, QueryValue | string[]>,
-  filename = 'export.bin',
-) {
-  const url = `${path}${qs(params)}`;
-  const blob = await apiFetch<Blob>(url);
+  options: AdminDownloadOptions = {},
+): Promise<AdminDownloadResult> {
+  const { filename = 'export.bin', signal, onProgress } = options;
+  const url = `${getApiBase()}${path}${qs(params)}`;
+
+  const res = await fetch(url, {
+    credentials: 'include',
+    cache: 'no-store',
+    signal,
+  });
+
+  if (!res.ok) {
+    let message = res.statusText || 'Export failed';
+    try {
+      const body = (await res.json()) as Record<string, unknown>;
+      if (typeof body.message === 'string') message = body.message;
+      else if (typeof body.error === 'string') message = body.error;
+    } catch {
+      // non-JSON error body
+    }
+    throw new ApiError(message, res.status);
+  }
+
+  const totalHeader = res.headers.get('Content-Length');
+  const totalBytes = totalHeader ? Number(totalHeader) : null;
+  const truncated = res.headers.get('X-Export-Truncated') === 'true';
+  const totalRows = numericHeader(res.headers.get('X-Export-Total'));
+  const exportedRows = numericHeader(res.headers.get('X-Export-Count'));
+
+  let blob: Blob;
+  if (res.body && typeof res.body.getReader === 'function') {
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    onProgress?.({
+      percent: totalBytes ? 0 : null,
+      receivedBytes: 0,
+      totalBytes,
+    });
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        received += value.length;
+        onProgress?.({
+          percent:
+            totalBytes && totalBytes > 0
+              ? Math.min(100, Math.round((received / totalBytes) * 100))
+              : null,
+          receivedBytes: received,
+          totalBytes,
+        });
+      }
+    }
+    blob = new Blob(chunks as BlobPart[], {
+      type: res.headers.get('content-type') || 'application/octet-stream',
+    });
+  } else {
+    blob = await res.blob();
+    onProgress?.({
+      percent: 100,
+      receivedBytes: blob.size,
+      totalBytes: totalBytes ?? blob.size,
+    });
+  }
+
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = objectUrl;
   a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(objectUrl);
+
+  return { truncated, total: totalRows, exported: exportedRows };
+}
+
+function numericHeader(value: string | null): number | null {
+  if (value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Loader2, Mail, ShieldCheck } from 'lucide-react';
 import { Dialog } from '@/shared/ui/Dialog';
 import { trackEvent } from '@/lib/analytics';
@@ -29,6 +29,12 @@ export function EmailVerifyModal({
     setError(null);
     setSent(false);
   };
+
+  // Clear state whenever the modal closes (including when the parent hands off
+  // to the transfer progress modal once the upload starts).
+  useEffect(() => {
+    if (!open) reset();
+  }, [open]);
 
   const handleClose = () => {
     reset();
