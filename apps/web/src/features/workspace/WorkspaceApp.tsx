@@ -10,10 +10,17 @@ import {
   FileType,
   ListOrdered,
   Layers,
+  MoreHorizontal,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { PDFFile, PDFPageItem, FileStore } from '@/lib/types';
+import {
+  ConfirmDialog,
+  DropdownItem,
+  DropdownMenu,
+  useToast,
+} from '@/shared/ui';
 import {
   parseUploadedFile,
   renderThumbnailsForPages,
@@ -41,7 +48,6 @@ import {
   type TransferStageStep,
 } from '@/features/transfer';
 import type { FileKind } from '@pdfnexus/shared';
-import { ConfirmDialog, useToast } from '@/shared/ui';
 import { trackEvent } from '@/lib/analytics';
 import VirtualizedPageGrid from '@/features/workspace/VirtualizedPageGrid';
 
@@ -822,80 +828,120 @@ export default function WorkspaceApp() {
         )}
       </AnimatePresence>
 
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)]/90 px-6 shadow-xs backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 rounded-lg">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-teal-800 text-white shadow-md shadow-teal-900/20">
+      <header className="sticky top-0 z-30 border-b border-[color:var(--color-border)] bg-[color:var(--color-surface)]/90 shadow-xs backdrop-blur-md">
+        <div className="flex min-h-14 items-center justify-between gap-2 px-3 py-2 sm:min-h-16 sm:gap-3 sm:px-6 sm:py-0">
+          <Link
+            href="/"
+            className="flex min-w-0 shrink items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 sm:gap-3"
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-teal-800 text-white shadow-md shadow-teal-900/20">
               <Layers className="h-4 w-4" />
             </div>
-            <div className="flex items-center">
-              <h1 className="font-display text-lg tracking-tight text-[color:var(--color-ink)]">
+            <div className="flex min-w-0 items-center">
+              <h1 className="font-display truncate text-base tracking-tight text-[color:var(--color-ink)] sm:text-lg">
                 PDFNexus
               </h1>
-              <span className="ml-2 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-bold text-teal-800">
+              <span className="ml-2 hidden rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-bold text-teal-800 sm:inline">
                 Local Engine
               </span>
             </div>
           </Link>
-        </div>
 
-        <div className="flex items-center gap-3.5">
-          <div className="hidden items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[11px] font-bold text-emerald-700 sm:flex">
-            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            <span>Privacy Shield Active</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleTriggerUpload}
-            className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-white transition-all hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add Files
-          </button>
-
-          {pages.length > 0 && (
-            <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
-              <button
-                type="button"
-                onClick={() => setIsPreviewPageOrderOpen(true)}
-                className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
-              >
-                <ListOrdered className="h-3.5 w-3.5 text-teal-700" />
-                Preview Order
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsConvertToWordOpen(true)}
-                className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-bold text-teal-800 transition-all hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
-              >
-                <FileType className="h-3.5 w-3.5 text-teal-700" />
-                Convert to Word
-              </button>
-              <button
-                type="button"
-                onClick={handleClearAll}
-                className="cursor-pointer rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
-              >
-                Reset
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleMergeAndCompile()}
-                disabled={transfer.isActive}
-                className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-teal-700 px-4.5 py-1.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-teal-800 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
-              >
-                {transfer.isActive ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Compiling...
-                  </>
-                ) : (
-                  <>
-                    <Download className="h-3.5 w-3.5" /> Merge & Download
-                  </>
-                )}
-              </button>
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
+            <div className="hidden items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[11px] font-bold text-emerald-700 lg:flex">
+              <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <span>Privacy Shield Active</span>
             </div>
-          )}
+
+            <button
+              type="button"
+              onClick={handleTriggerUpload}
+              className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-white transition-all hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 sm:px-3.5"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Add</span>
+              <span className="hidden sm:inline"> Files</span>
+            </button>
+
+            {pages.length > 0 && (
+              <>
+                {/* Desktop / tablet action strip */}
+                <div className="hidden items-center gap-2 border-l border-slate-200 pl-2 md:flex lg:pl-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsPreviewPageOrderOpen(true)}
+                    className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+                  >
+                    <ListOrdered className="h-3.5 w-3.5 text-teal-700" />
+                    <span className="hidden lg:inline">Preview Order</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsConvertToWordOpen(true)}
+                    className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-bold text-teal-800 transition-all hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+                  >
+                    <FileType className="h-3.5 w-3.5 text-teal-700" />
+                    <span className="hidden lg:inline">Convert to Word</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearAll}
+                    className="cursor-pointer rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+                  >
+                    Reset
+                  </button>
+                </div>
+
+                {/* Mobile overflow menu for secondary actions */}
+                <div className="md:hidden">
+                  <DropdownMenu
+                    align="end"
+                    trigger={
+                      <button
+                        type="button"
+                        aria-label="More workspace actions"
+                        className="flex cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                    }
+                  >
+                    <DropdownItem onClick={() => setIsPreviewPageOrderOpen(true)}>
+                      <ListOrdered className="h-3.5 w-3.5 text-teal-700" />
+                      Preview Order
+                    </DropdownItem>
+                    <DropdownItem onClick={() => setIsConvertToWordOpen(true)}>
+                      <FileType className="h-3.5 w-3.5 text-teal-700" />
+                      Convert to Word
+                    </DropdownItem>
+                    <DropdownItem danger onClick={handleClearAll}>
+                      Reset workspace
+                    </DropdownItem>
+                  </DropdownMenu>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void handleMergeAndCompile()}
+                  disabled={transfer.isActive}
+                  className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-teal-700 px-2.5 py-1.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-teal-800 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 sm:px-4.5"
+                >
+                  {transfer.isActive ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span className="hidden sm:inline">Compiling...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Merge & Download</span>
+                      <span className="sm:hidden">Merge</span>
+                    </>
+                  )}
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
