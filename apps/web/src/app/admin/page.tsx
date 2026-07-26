@@ -1,16 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import {
+  AlertTriangle,
   Files,
   HardDrive,
   Percent,
@@ -18,48 +11,97 @@ import {
   Users,
   Workflow,
 } from 'lucide-react';
-import { adminOverview } from '@/features/admin/api';
 import {
+  adminOverview,
+  type AdminOverview,
+} from '@/features/admin/api';
+import {
+  AreaSeriesChart,
+  ChartFrame,
   ErrorState,
   LoadingState,
   PageHeader,
   StatCard,
 } from '@/features/admin/ui';
 import { formatBytes } from '@/features/admin/utils';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '@/shared/ui';
+import { useAdminAuth } from '@/features/admin/AdminAuthProvider';
 
 export default function AdminOverviewPage() {
-  const [data, setData] = useState<any>(null);
+  const { hasPermission } = useAdminAuth();
+  const [data, setData] = useState<AdminOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
-    setError(null);
-    try {
-      setData(await adminOverview());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load overview');
-    }
-  };
-
   useEffect(() => {
-    void load();
+    const ac = new AbortController();
+    void (async () => {
+      setError(null);
+      try {
+        setData(await adminOverview(ac.signal));
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
+        setError(err instanceof Error ? err.message : 'Failed to load overview');
+      }
+    })();
+    return () => ac.abort();
   }, []);
 
-  if (error) return <ErrorState message={error} onRetry={() => void load()} />;
+  if (error) return <ErrorState message={error} onRetry={() => window.location.reload()} />;
   if (!data) return <LoadingState />;
 
   const chartData = [
-    { name: 'Uploads', value: data.activity?.uploads ?? 0 },
-    { name: 'Merges', value: data.activity?.merges ?? 0 },
-    { name: 'Converts', value: data.activity?.conversions ?? 0 },
-    { name: 'Downloads', value: data.activity?.downloads ?? 0 },
+    { name: 'Uploads', count: data.activity?.uploads ?? 0 },
+    { name: 'Merges', count: data.activity?.merges ?? 0 },
+    { name: 'Converts', count: data.activity?.conversions ?? 0 },
+    { name: 'Downloads', count: data.activity?.downloads ?? 0 },
   ];
 
+  const alerts: Array<{ tone: 'danger' | 'warning' | 'info'; text: string; href?: string }> = [];
+  if ((data.health?.openErrors ?? 0) > 0) {
+    alerts.push({
+      tone: 'danger',
+      text: `${data.health.openErrors} open error event(s)`,
+      href: '/admin/errors',
+    });
+  }
+  if ((data.operations?.failed ?? 0) > 0) {
+    alerts.push({
+      tone: 'warning',
+      text: `${data.operations.failed} failed processing job(s)`,
+    });
+  }
+
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
         title="Overview"
-        description="System-wide KPIs refreshed from live operational data."
+        description="Live operational KPIs across users, files, processing, and API traffic."
       />
+
+      {alerts.length > 0 ? (
+        <Card className="border-[var(--color-warning)]/40">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-[var(--color-warning)]" />
+              Alerts
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {alerts.map((a) =>
+              a.href ? (
+                <Link key={a.text} href={a.href}>
+                  <Badge tone={a.tone}>{a.text}</Badge>
+                </Link>
+              ) : (
+                <Badge key={a.text} tone={a.tone}>
+                  {a.text}
+                </Badge>
+              ),
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Total users"
@@ -90,7 +132,7 @@ export default function AdminOverviewPage() {
           icon={<Workflow className="h-4 w-4" />}
         />
         <StatCard
-          label="Merges / projects"
+          label="Merges"
           value={data.activity?.merges ?? 0}
           hint={`${data.activity?.conversions ?? 0} conversions`}
           icon={<Workflow className="h-4 w-4" />}
@@ -98,36 +140,66 @@ export default function AdminOverviewPage() {
         <StatCard
           label="Admin sessions"
           value={data.admin?.activeSessions ?? 0}
-          hint={`${data.admin?.openErrors ?? 0} open errors`}
           icon={<Server className="h-4 w-4" />}
         />
         <StatCard
-          label="Uptime"
-          value={`${Math.floor((data.uptimeSec ?? 0) / 3600)}h`}
-          hint={`Redis ${data.health?.redis ? 'ok' : 'down'} · DB ok`}
-          icon={<Server className="h-4 w-4" />}
+          label="Open errors"
+          value={data.health?.openErrors ?? 0}
+          icon={<AlertTriangle className="h-4 w-4" />}
         />
       </div>
 
-      <div className="mt-6 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <h2 className="mb-4 text-sm font-semibold">Feature activity</h2>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-              <XAxis dataKey="name" />
-              <YAxis allowDecimals={false} />
-              <Tooltip />
-              <Area
-                type="monotone"
-                dataKey="value"
-                stroke="#0f766e"
-                fill="#99f6e4"
-                fillOpacity={0.5}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <ChartFrame
+          title="Feature activity"
+          subtitle="Lifetime event counts by product action"
+          className="lg:col-span-2"
+        >
+          <AreaSeriesChart data={chartData} xKey="name" yKey="count" />
+        </ChartFrame>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Quick actions</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            {hasPermission('analytics.read') ? (
+              <Link href="/admin/analytics">
+                <Button variant="outline" className="w-full justify-start">
+                  Open analytics
+                </Button>
+              </Link>
+            ) : null}
+            {hasPermission('logs.read') ? (
+              <Link href="/admin/logs">
+                <Button variant="outline" className="w-full justify-start">
+                  Inspect request logs
+                </Button>
+              </Link>
+            ) : null}
+            {hasPermission('errors.read') ? (
+              <Link href="/admin/errors">
+                <Button variant="outline" className="w-full justify-start">
+                  Triage errors
+                </Button>
+              </Link>
+            ) : null}
+            {hasPermission('users.read') ? (
+              <Link href="/admin/users">
+                <Button variant="outline" className="w-full justify-start">
+                  Manage users
+                </Button>
+              </Link>
+            ) : null}
+            {hasPermission('monitoring.read') ? (
+              <Link href="/admin/monitoring">
+                <Button variant="outline" className="w-full justify-start">
+                  System monitoring
+                </Button>
+              </Link>
+            ) : null}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

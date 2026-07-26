@@ -2,41 +2,64 @@
 
 import React, { useEffect, useState } from 'react';
 import { adminMonitoring } from '@/features/admin/api';
-import { ErrorState, LoadingState, PageHeader, StatCard } from '@/features/admin/ui';
+import {
+  ErrorState,
+  LoadingState,
+  PageHeader,
+  StatCard,
+} from '@/features/admin/ui';
 import { formatBytes, formatDate } from '@/features/admin/utils';
+import { Badge, Card, CardContent, CardHeader, CardTitle } from '@/shared/ui';
+
+type QueueCounts = Record<string, number>;
 
 export default function AdminMonitoringPage() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<Record<string, any> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = async (signal?: AbortSignal) => {
     try {
-      setData(await adminMonitoring());
+      setData(await adminMonitoring(signal));
       setError(null);
     } catch (err) {
+      if ((err as Error).name === 'AbortError') return;
       setError(err instanceof Error ? err.message : 'Failed to load monitoring');
     }
   };
 
   useEffect(() => {
-    void load();
+    const ac = new AbortController();
+    void load(ac.signal);
     const id = window.setInterval(() => void load(), 12000);
-    return () => window.clearInterval(id);
+    return () => {
+      ac.abort();
+      window.clearInterval(id);
+    };
   }, []);
 
-  if (error && !data) return <ErrorState message={error} onRetry={() => void load()} />;
+  if (error && !data) {
+    return <ErrorState message={error} onRetry={() => void load()} />;
+  }
   if (!data) return <LoadingState />;
 
-  const memRatio = data.host?.memUsedRatio;
+  const memRatio = data.host?.memUsedRatio as number | undefined;
+  const queues = (data.queues || {}) as Record<string, QueueCounts>;
+
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
         title="System monitoring"
         description="Live process, host, database, Redis, queues, and API latency. Auto-refreshes every 12s."
       />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Uptime" value={`${Math.floor(data.uptimeSec / 3600)}h`} />
-        <StatCard label="Heap used" value={formatBytes(data.process?.heapUsed || 0)} />
+        <StatCard
+          label="Uptime"
+          value={`${Math.floor((data.uptimeSec || 0) / 3600)}h`}
+        />
+        <StatCard
+          label="Heap used"
+          value={formatBytes(data.process?.heapUsed || 0)}
+        />
         <StatCard
           label="Host memory"
           value={memRatio != null ? `${Math.round(memRatio * 100)}%` : 'n/a'}
@@ -61,28 +84,73 @@ export default function AdminMonitoringPage() {
         />
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <h2 className="mb-3 text-sm font-semibold">Queues</h2>
-          <pre className="overflow-auto text-xs text-[var(--color-muted)]">
-            {JSON.stringify(data.queues, null, 2)}
-          </pre>
-        </div>
-        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <h2 className="mb-3 text-sm font-semibold">Slow requests (1h)</h2>
-          <ul className="space-y-2 text-sm">
-            {(data.slowRequests || []).slice(0, 12).map((r: any, i: number) => (
-              <li key={i} className="flex justify-between gap-3">
-                <span className="truncate">
-                  {r.method} {r.path}
-                </span>
-                <span className="tabular-nums text-[var(--color-muted)]">
-                  {r.durationMs}ms · {formatDate(r.createdAt)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Queues</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {Object.keys(queues).length === 0 ? (
+              <p className="text-sm text-[var(--color-muted)]">
+                No queue data available
+              </p>
+            ) : (
+              Object.entries(queues).map(([name, counts]) => (
+                <div key={name}>
+                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-[var(--color-muted)]">
+                    {name}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(counts || {}).map(([k, v]) => (
+                      <Badge
+                        key={k}
+                        tone={
+                          k === 'failed' && Number(v) > 0 ? 'danger' : 'neutral'
+                        }
+                      >
+                        {k}: {v}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Slow requests (1h)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2 text-sm">
+              {(data.slowRequests || []).length === 0 ? (
+                <li className="text-[var(--color-muted)]">None</li>
+              ) : (
+                (data.slowRequests || []).slice(0, 12).map(
+                  (
+                    r: {
+                      method: string;
+                      path: string;
+                      durationMs: number;
+                      createdAt: string;
+                    },
+                    i: number,
+                  ) => (
+                    <li key={i} className="flex justify-between gap-3">
+                      <span className="truncate">
+                        {r.method} {r.path}
+                      </span>
+                      <span className="shrink-0 tabular-nums text-[var(--color-muted)]">
+                        {r.durationMs}ms · {formatDate(r.createdAt)}
+                      </span>
+                    </li>
+                  ),
+                )
+              )}
+            </ul>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

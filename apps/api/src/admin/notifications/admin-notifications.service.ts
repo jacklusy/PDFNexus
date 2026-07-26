@@ -27,14 +27,32 @@ export class AdminNotificationsService {
     });
   }
 
-  async list(query: { page?: number; pageSize?: number; unreadOnly?: boolean }) {
+  /** Notifications for a user include both targeted and broadcast (userId null). */
+  private scope(userId: string): Prisma.AdminNotificationWhereInput {
+    return {
+      OR: [{ userId }, { userId: null }],
+    };
+  }
+
+  async list(
+    query: { page?: number; pageSize?: number; unreadOnly?: boolean },
+    userId: string,
+  ) {
     const page = Math.max(1, Number(query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 25));
-    const where: Prisma.AdminNotificationWhereInput = {};
-    if (query.unreadOnly) where.readAt = null;
+    const where: Prisma.AdminNotificationWhereInput = {
+      AND: [this.scope(userId)],
+    };
+    if (query.unreadOnly) {
+      (where.AND as Prisma.AdminNotificationWhereInput[]).push({
+        readAt: null,
+      });
+    }
     const [total, unread, items] = await Promise.all([
       this.prisma.adminNotification.count({ where }),
-      this.prisma.adminNotification.count({ where: { readAt: null } }),
+      this.prisma.adminNotification.count({
+        where: { AND: [this.scope(userId), { readAt: null }] },
+      }),
       this.prisma.adminNotification.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -45,30 +63,35 @@ export class AdminNotificationsService {
     return { total, unread, page, pageSize, items };
   }
 
-  async markRead(id: string) {
+  async markRead(id: string, userId: string) {
+    const note = await this.prisma.adminNotification.findFirst({
+      where: { id, OR: [{ userId }, { userId: null }] },
+    });
+    if (!note) return null;
     return this.prisma.adminNotification.update({
       where: { id },
       data: { readAt: new Date() },
     });
   }
 
-  async markAllRead() {
+  async markAllRead(userId: string) {
     await this.prisma.adminNotification.updateMany({
-      where: { readAt: null },
+      where: { AND: [this.scope(userId), { readAt: null }] },
       data: { readAt: new Date() },
     });
     return { ok: true };
   }
 
-  stream(): Observable<MessageEvent> {
+  stream(userId: string): Observable<MessageEvent> {
     return interval(8000).pipe(
       startWith(0),
       switchMap(async () => {
+        const scope = this.scope(userId);
         const unread = await this.prisma.adminNotification.count({
-          where: { readAt: null },
+          where: { AND: [scope, { readAt: null }] },
         });
         const latest = await this.prisma.adminNotification.findMany({
-          where: { readAt: null },
+          where: { AND: [scope, { readAt: null }] },
           orderBy: { createdAt: 'desc' },
           take: 5,
         });

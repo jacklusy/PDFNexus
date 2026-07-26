@@ -22,6 +22,7 @@ export class AnalyticsService {
         tool: data.tool,
         device: data.device,
         browser: data.browser,
+        os: data.os ?? null,
         country: country ?? null,
         sessionId: data.sessionId,
       },

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -10,10 +11,18 @@ import {
   Sse,
   UseGuards,
   MessageEvent,
+  NotFoundException,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { Observable } from 'rxjs';
 import { VerifiedUserStatus } from '@prisma/client';
+import {
+  adminAnalyticsQuerySchema,
+  adminAuditQuerySchema,
+  adminErrorsQuerySchema,
+  adminLogsQuerySchema,
+  ErrorCodes,
+} from '@pdfnexus/shared';
 import { AdminSessionGuard } from './auth/admin-session.guard';
 import { RequirePermission } from './auth/require-permission.decorator';
 import { CurrentAdmin } from './auth/current-admin.decorator';
@@ -27,6 +36,20 @@ import { AdminAuditQueryService } from './audit/admin-audit-query.service';
 import { AdminErrorsService } from './errors/admin-errors.service';
 import { AdminNotificationsService } from './notifications/admin-notifications.service';
 import { AdminSecurityService } from './security/admin-security.service';
+
+function parseQuery<T>(
+  schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
+  query: Record<string, string>,
+): T {
+  const parsed = schema.safeParse(query);
+  if (!parsed.success) {
+    throw new BadRequestException({
+      error: 'Invalid query parameters',
+      code: ErrorCodes.VALIDATION_ERROR,
+    });
+  }
+  return parsed.data;
+}
 
 @Controller('admin')
 @UseGuards(AdminSessionGuard)
@@ -52,18 +75,7 @@ export class AdminController {
   @Get('logs')
   @RequirePermission('logs.read')
   listLogs(@Query() query: Record<string, string>) {
-    return this.logs.list({
-      page: Number(query.page),
-      pageSize: Number(query.pageSize),
-      search: query.search,
-      method: query.method,
-      path: query.path,
-      statusMin: query.statusMin ? Number(query.statusMin) : undefined,
-      statusMax: query.statusMax ? Number(query.statusMax) : undefined,
-      from: query.from,
-      to: query.to,
-      sort: query.sort === 'asc' ? 'asc' : 'desc',
-    });
+    return this.logs.list(parseQuery(adminLogsQuerySchema, query));
   }
 
   @Get('logs/export')
@@ -72,19 +84,35 @@ export class AdminController {
     @Query() query: Record<string, string>,
     @Res() res: Response,
   ) {
-    const csv = await this.logs.exportCsv({
-      search: query.search,
-      method: query.method,
-      path: query.path,
-      from: query.from,
-      to: query.to,
-    });
+    const params = parseQuery(adminLogsQuerySchema, query);
+    const format = (params.format || 'csv').toLowerCase();
+
+    if (format === 'xlsx' || format === 'excel') {
+      const result = await this.logs.exportExcel(params);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename="request-logs.xlsx"',
+      );
+      if (result.truncated) res.setHeader('X-Export-Truncated', 'true');
+      res.setHeader('X-Export-Total', String(result.total));
+      res.setHeader('X-Export-Count', String(result.exported));
+      return res.send(result.buffer);
+    }
+
+    const result = await this.logs.exportCsv(params);
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader(
       'Content-Disposition',
       'attachment; filename="request-logs.csv"',
     );
-    res.send(csv);
+    if (result.truncated) res.setHeader('X-Export-Truncated', 'true');
+    res.setHeader('X-Export-Total', String(result.total));
+    res.setHeader('X-Export-Count', String(result.exported));
+    return res.send(result.csv);
   }
 
   @Get('users')
@@ -119,11 +147,7 @@ export class AdminController {
   @Get('analytics')
   @RequirePermission('analytics.read')
   analyticsReports(@Query() query: Record<string, string>) {
-    return this.analytics.reports({
-      from: query.from,
-      to: query.to,
-      days: query.days ? Number(query.days) : undefined,
-    });
+    return this.analytics.reports(parseQuery(adminAnalyticsQuerySchema, query));
   }
 
   @Get('analytics/export')
@@ -132,12 +156,8 @@ export class AdminController {
     @Query() query: Record<string, string>,
     @Res() res: Response,
   ) {
-    const format = (query.format || 'csv').toLowerCase();
-    const params = {
-      from: query.from,
-      to: query.to,
-      days: query.days ? Number(query.days) : undefined,
-    };
+    const params = parseQuery(adminAnalyticsQuerySchema, query);
+    const format = (params.format || 'csv').toLowerCase();
 
     if (format === 'xlsx' || format === 'excel') {
       const buffer = await this.analytics.exportExcel(params);
@@ -180,26 +200,69 @@ export class AdminController {
   @Get('audit')
   @RequirePermission('audit.read')
   listAudit(@Query() query: Record<string, string>) {
-    return this.audit.list({
-      page: Number(query.page),
-      pageSize: Number(query.pageSize),
-      search: query.search,
-      action: query.action,
-      from: query.from,
-      to: query.to,
-    });
+    return this.audit.list(parseQuery(adminAuditQuerySchema, query));
+  }
+
+  @Get('audit/export')
+  @RequirePermission('audit.read')
+  async exportAudit(
+    @Query() query: Record<string, string>,
+    @Res() res: Response,
+  ) {
+    const params = parseQuery(adminAuditQuerySchema, query);
+    const format = (params.format || 'csv').toLowerCase();
+    if (format === 'xlsx' || format === 'excel') {
+      const result = await this.audit.exportExcel(params);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename="audit.xlsx"',
+      );
+      if (result.truncated) res.setHeader('X-Export-Truncated', 'true');
+      return res.send(result.buffer);
+    }
+    const result = await this.audit.exportCsv(params);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="audit.csv"');
+    if (result.truncated) res.setHeader('X-Export-Truncated', 'true');
+    return res.send(result.csv);
   }
 
   @Get('errors')
   @RequirePermission('errors.read')
   listErrors(@Query() query: Record<string, string>) {
-    return this.errors.list({
-      page: Number(query.page),
-      pageSize: Number(query.pageSize),
-      status: query.status,
-      severity: query.severity,
-      search: query.search,
-    });
+    return this.errors.list(parseQuery(adminErrorsQuerySchema, query));
+  }
+
+  @Get('errors/export')
+  @RequirePermission('errors.read')
+  async exportErrors(
+    @Query() query: Record<string, string>,
+    @Res() res: Response,
+  ) {
+    const params = parseQuery(adminErrorsQuerySchema, query);
+    const format = (params.format || 'csv').toLowerCase();
+    if (format === 'xlsx' || format === 'excel') {
+      const result = await this.errors.exportExcel(params);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename="errors.xlsx"',
+      );
+      if (result.truncated) res.setHeader('X-Export-Truncated', 'true');
+      return res.send(result.buffer);
+    }
+    const result = await this.errors.exportCsv(params);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="errors.csv"');
+    if (result.truncated) res.setHeader('X-Export-Truncated', 'true');
+    return res.send(result.csv);
   }
 
   @Post('errors/:id/resolve')
@@ -210,30 +273,45 @@ export class AdminController {
 
   @Get('notifications')
   @RequirePermission('notifications.read')
-  listNotifications(@Query() query: Record<string, string>) {
-    return this.notifications.list({
-      page: Number(query.page),
-      pageSize: Number(query.pageSize),
-      unreadOnly: query.unreadOnly === 'true',
-    });
+  listNotifications(
+    @Query() query: Record<string, string>,
+    @CurrentAdmin() admin: AdminRequestUser,
+  ) {
+    return this.notifications.list(
+      {
+        page: Number(query.page),
+        pageSize: Number(query.pageSize),
+        unreadOnly: query.unreadOnly === 'true',
+      },
+      admin.id,
+    );
   }
 
   @Post('notifications/:id/read')
   @RequirePermission('notifications.read')
-  markNotificationRead(@Param('id') id: string) {
-    return this.notifications.markRead(id);
+  async markNotificationRead(
+    @Param('id') id: string,
+    @CurrentAdmin() admin: AdminRequestUser,
+  ) {
+    const updated = await this.notifications.markRead(id, admin.id);
+    if (!updated) {
+      throw new NotFoundException({ error: 'Notification not found' });
+    }
+    return updated;
   }
 
   @Post('notifications/read-all')
   @RequirePermission('notifications.read')
-  markAllNotificationsRead() {
-    return this.notifications.markAllRead();
+  markAllNotificationsRead(@CurrentAdmin() admin: AdminRequestUser) {
+    return this.notifications.markAllRead(admin.id);
   }
 
   @Sse('notifications/stream')
   @RequirePermission('notifications.read')
-  notificationsStream(): Observable<MessageEvent> {
-    return this.notifications.stream();
+  notificationsStream(
+    @CurrentAdmin() admin: AdminRequestUser,
+  ): Observable<MessageEvent> {
+    return this.notifications.stream(admin.id);
   }
 
   @Get('security')

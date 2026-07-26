@@ -1,7 +1,9 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { DM_Sans, Instrument_Serif } from 'next/font/google';
 import { ToastProvider } from '@/shared/ui';
 import { AnalyticsListener } from '@/components/AnalyticsListener';
+import { ThemeProvider } from '@/components/ThemeProvider';
+import { getAppUrl } from '@/lib/seo';
 import './globals.css';
 
 const dmSans = DM_Sans({
@@ -17,7 +19,7 @@ const instrument = Instrument_Serif({
   display: 'swap',
 });
 
-const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const appUrl = getAppUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl),
@@ -42,14 +44,28 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#eef4f4' },
+    { media: '(prefers-color-scheme: dark)', color: '#0f172a' },
+  ],
+  colorScheme: 'light dark',
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${dmSans.variable} ${instrument.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${dmSans.variable} ${instrument.variable}`}
+      suppressHydrationWarning
+    >
       <body className="font-sans antialiased">
-        <ToastProvider>
-          <AnalyticsListener />
-          {children}
-        </ToastProvider>
+        <ThemeProvider>
+          <ToastProvider>
+            <AnalyticsListener />
+            {children}
+          </ToastProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

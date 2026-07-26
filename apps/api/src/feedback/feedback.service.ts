@@ -16,11 +16,14 @@ export class FeedbackService {
     }
 
     const data = parsed.data;
+    const message = data.subject
+      ? `[${data.subject}]\n\n${data.message}`
+      : data.message;
     const row = await this.prisma.feedback.create({
       data: {
         type: data.type,
         rating: data.rating ?? null,
-        message: data.message,
+        message,
         email: data.email ?? null,
         userAgent: userAgent ?? null,
       },

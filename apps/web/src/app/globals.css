@@ -10,20 +10,23 @@
   --color-accent: #0f766e;
   --color-accent-hover: #0d5f59;
   --color-accent-soft: #ccfbf1;
+  --color-success: #15803d;
+  --color-success-soft: #dcfce7;
+  --color-warning: #b45309;
+  --color-warning-soft: #fef3c7;
+  --color-danger: #b91c1c;
+  --color-danger-soft: #fee2e2;
+  --color-info: #1d4ed8;
+  --color-info-soft: #dbeafe;
+  --color-chart-1: #0f766e;
+  --color-chart-2: #0284c7;
+  --color-chart-3: #7c3aed;
+  --color-chart-4: #db2777;
+  --color-chart-5: #ea580c;
+  --color-chart-6: #65a30d;
   --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-instrument), ui-serif, Georgia, serif;
-}
-
-.dark {
-  --color-ink: #e8f0f0;
-  --color-muted: #94a8ad;
-  --color-canvas: #0b1416;
-  --color-surface: #122024;
-  --color-surface-2: #182a2e;
-  --color-border: #24383c;
-  --color-accent: #2dd4bf;
-  --color-accent-hover: #5eead4;
-  --color-accent-soft: rgba(45, 212, 191, 0.15);
+  color-scheme: light;
 }
 
 .dark {
@@ -34,8 +37,23 @@
   --color-surface-2: #334155;
   --color-border: #475569;
   --color-accent: #14b8a6;
-  --color-accent-hover: #0d9488;
+  --color-accent-hover: #2dd4bf;
   --color-accent-soft: #134e4a;
+  --color-success: #4ade80;
+  --color-success-soft: rgba(74, 222, 128, 0.15);
+  --color-warning: #fbbf24;
+  --color-warning-soft: rgba(251, 191, 36, 0.15);
+  --color-danger: #f87171;
+  --color-danger-soft: rgba(248, 113, 113, 0.15);
+  --color-info: #60a5fa;
+  --color-info-soft: rgba(96, 165, 250, 0.15);
+  --color-chart-1: #2dd4bf;
+  --color-chart-2: #38bdf8;
+  --color-chart-3: #a78bfa;
+  --color-chart-4: #f472b6;
+  --color-chart-5: #fb923c;
+  --color-chart-6: #a3e635;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -49,6 +67,21 @@
   --color-border: var(--color-border);
   --color-accent: var(--color-accent);
   --color-accent-hover: var(--color-accent-hover);
+  --color-accent-soft: var(--color-accent-soft);
+  --color-success: var(--color-success);
+  --color-success-soft: var(--color-success-soft);
+  --color-warning: var(--color-warning);
+  --color-warning-soft: var(--color-warning-soft);
+  --color-danger: var(--color-danger);
+  --color-danger-soft: var(--color-danger-soft);
+  --color-info: var(--color-info);
+  --color-info-soft: var(--color-info-soft);
+  --color-chart-1: var(--color-chart-1);
+  --color-chart-2: var(--color-chart-2);
+  --color-chart-3: var(--color-chart-3);
+  --color-chart-4: var(--color-chart-4);
+  --color-chart-5: var(--color-chart-5);
+  --color-chart-6: var(--color-chart-6);
 }
 
 html {
@@ -83,12 +116,19 @@ body {
     linear-gradient(180deg, #f4faf9 0%, #eef4f4 50%, #e8f0f0 100%);
 }
 
+.dark .atmosphere-light {
+  background:
+    radial-gradient(900px 480px at 0% 0%, rgba(20, 184, 166, 0.12), transparent 55%),
+    radial-gradient(700px 420px at 100% 0%, rgba(15, 23, 42, 0.4), transparent 50%),
+    linear-gradient(180deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #94a3b8;
+  background: var(--color-border);
   border-radius: 999px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {

@@ -172,6 +172,7 @@ model AnalyticsEvent {
   tool      String?
   device    String?
   browser   String?
+  os        String?
   country   String?
   sessionId String?
   createdAt DateTime @default(now())
@@ -180,6 +181,7 @@ model AnalyticsEvent {
   @@index([createdAt])
   @@index([country, createdAt])
   @@index([device, createdAt])
+  @@index([os, createdAt])
 }
 
 model Feedback {

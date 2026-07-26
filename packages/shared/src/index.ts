@@ -43,6 +43,7 @@ export const verifyOtpSchema = z.object({
 export const feedbackSchema = z.object({
   type: z.enum(['rating', 'bug', 'feature', 'comment']),
   rating: z.number().int().min(1).max(5).optional(),
+  subject: z.string().trim().min(1).max(120).optional(),
   message: z.string().trim().min(1).max(5000),
   email: emailSchema.optional().nullable(),
 });
@@ -61,8 +62,102 @@ export const analyticsEventSchema = z.object({
   tool: z.string().max(64).optional(),
   device: z.enum(['desktop', 'mobile', 'tablet', 'unknown']).optional(),
   browser: z.string().max(64).optional(),
+  os: z.string().max(64).optional(),
   sessionId: z.string().max(128).optional(),
 });
+
+/** Comma-separated query values → trimmed non-empty string array. */
+const csvArray = z
+  .union([z.string(), z.array(z.string())])
+  .optional()
+  .transform((v) => {
+    if (v == null) return undefined;
+    const parts = Array.isArray(v) ? v : v.split(',');
+    const out = parts.map((s) => s.trim()).filter(Boolean);
+    return out.length ? out : undefined;
+  });
+
+const optionalInt = z
+  .union([z.string(), z.number()])
+  .optional()
+  .transform((v) => {
+    if (v == null || v === '') return undefined;
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  });
+
+const optionalBool = z
+  .union([z.string(), z.boolean()])
+  .optional()
+  .transform((v) => {
+    if (v == null || v === '') return undefined;
+    if (typeof v === 'boolean') return v;
+    return v === 'true' || v === '1';
+  });
+
+export const adminAnalyticsQuerySchema = z.object({
+  from: z.string().optional(),
+  to: z.string().optional(),
+  days: optionalInt,
+  type: csvArray,
+  tool: csvArray,
+  device: csvArray,
+  browser: csvArray,
+  country: csvArray,
+  os: csvArray,
+  format: z.enum(['csv', 'xlsx', 'excel', 'pdf']).optional(),
+});
+
+export const adminLogsQuerySchema = z.object({
+  page: optionalInt,
+  pageSize: optionalInt,
+  search: z.string().optional(),
+  method: z.string().optional(),
+  path: z.string().optional(),
+  statusMin: optionalInt,
+  statusMax: optionalInt,
+  from: z.string().optional(),
+  to: z.string().optional(),
+  sort: z.enum(['asc', 'desc']).optional(),
+  sortBy: z.enum(['createdAt', 'statusCode', 'durationMs']).optional(),
+  os: z.string().optional(),
+  browser: z.string().optional(),
+  deviceType: z.string().optional(),
+  authStatus: z.string().optional(),
+  ip: z.string().optional(),
+  userEmail: z.string().optional(),
+  adminUserId: z.string().optional(),
+  format: z.enum(['csv', 'xlsx', 'excel']).optional(),
+});
+
+export const adminAuditQuerySchema = z.object({
+  page: optionalInt,
+  pageSize: optionalInt,
+  search: z.string().optional(),
+  action: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  success: optionalBool,
+  resourceType: z.string().optional(),
+  actorEmail: z.string().optional(),
+  format: z.enum(['csv', 'xlsx', 'excel']).optional(),
+});
+
+export const adminErrorsQuerySchema = z.object({
+  page: optionalInt,
+  pageSize: optionalInt,
+  status: z.enum(['OPEN', 'RESOLVED']).optional(),
+  severity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
+  search: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  format: z.enum(['csv', 'xlsx', 'excel']).optional(),
+});
+
+export type AdminAnalyticsQuery = z.infer<typeof adminAnalyticsQuerySchema>;
+export type AdminLogsQuery = z.infer<typeof adminLogsQuerySchema>;
+export type AdminAuditQuery = z.infer<typeof adminAuditQuerySchema>;
+export type AdminErrorsQuery = z.infer<typeof adminErrorsQuerySchema>;
 
 export const ocrRequestSchema = z.object({
   imageBase64: z.string().min(1),

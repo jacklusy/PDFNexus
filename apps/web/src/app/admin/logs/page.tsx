@@ -1,188 +1,315 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Search, Download, FileText } from 'lucide-react';
-import { adminDownload, adminLogs } from '@/features/admin/api';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import {
-  PageHeader,
+  adminDownload,
+  adminLogs,
+  type HttpLogRow,
+} from '@/features/admin/api';
+import {
+  CopyValue,
   DataTable,
-  LoadingState,
   ErrorState,
-  EmptyState,
+  FilterBar,
+  LoadingState,
+  PageHeader,
   SeverityBadge,
+  useUrlFilters,
+  type DataColumn,
 } from '@/features/admin/ui';
 import { formatDate, formatDuration } from '@/features/admin/utils';
+import { Badge, Button } from '@/shared/ui';
 
-export default function LogsPage() {
+function statusTone(status: number): 'success' | 'warning' | 'danger' | 'info' {
+  if (status < 300) return 'success';
+  if (status < 400) return 'info';
+  if (status < 500) return 'warning';
+  return 'danger';
+}
+
+function LogsInner() {
+  const { get, setMany } = useUrlFilters();
   const [data, setData] = useState<{
-    items: any[];
+    items: HttpLogRow[];
     page: number;
     pageSize: number;
     total: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [method, setMethod] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [exporting, setExporting] = useState(false);
+
+  const page = Math.max(1, Number(get('page') || 1));
+  const pageSize = Math.max(10, Number(get('pageSize') || 25));
+  const sortBy = (get('sortBy') || 'createdAt') as
+    | 'createdAt'
+    | 'statusCode'
+    | 'durationMs';
+  const sort = (get('sort') || 'desc') as 'asc' | 'desc';
+
+  const params = useMemo(
+    () => ({
+      page,
+      pageSize,
+      search: get('search') || undefined,
+      method: get('method') || undefined,
+      path: get('path') || undefined,
+      statusMin: get('statusMin') || undefined,
+      statusMax: get('statusMax') || undefined,
+      from: get('from') || undefined,
+      to: get('to') || undefined,
+      os: get('os') || undefined,
+      browser: get('browser') || undefined,
+      deviceType: get('deviceType') || undefined,
+      authStatus: get('authStatus') || undefined,
+      ip: get('ip') || undefined,
+      userEmail: get('userEmail') || undefined,
+      sortBy,
+      sort,
+    }),
+    [get, page, pageSize, sort, sortBy],
+  );
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 300);
-    return () => clearTimeout(timer);
-  }, [search]);
+    const ac = new AbortController();
+    void (async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const logs = await adminLogs(params, ac.signal);
+        setData(logs);
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
+        setError(err instanceof Error ? err.message : 'Failed to load logs');
+      } finally {
+        setLoading(false);
+      }
+    })();
+    return () => ac.abort();
+  }, [params]);
 
-  const fetchData = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const logs = await adminLogs({
-        page,
-        pageSize: 50,
-        search: debouncedSearch || undefined,
-        method: method || undefined,
-      });
-      setData(logs);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load logs');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void fetchData();
-  }, [page, debouncedSearch, method]);
-
-  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
-
-  const statusSeverity = (status: number) => {
-    if (status < 300) return 'info';
-    if (status < 400) return 'warning';
-    return 'error';
-  };
-
-  if (loading && !data) return <LoadingState />;
-  if (error && !data) return <ErrorState message={error} onRetry={fetchData} />;
+  const columns: DataColumn<HttpLogRow>[] = [
+    {
+      id: 'createdAt',
+      header: 'Time',
+      sortable: true,
+      mobilePrimary: true,
+      cell: (r) => formatDate(r.createdAt),
+    },
+    {
+      id: 'method',
+      header: 'Method',
+      cell: (r) => <Badge tone="neutral">{r.method}</Badge>,
+    },
+    {
+      id: 'path',
+      header: 'Path',
+      cell: (r) => (
+        <span className="font-mono text-xs">{r.path}</span>
+      ),
+    },
+    {
+      id: 'statusCode',
+      header: 'Status',
+      sortable: true,
+      cell: (r) => (
+        <Badge tone={statusTone(r.statusCode)}>{r.statusCode}</Badge>
+      ),
+    },
+    {
+      id: 'durationMs',
+      header: 'Duration',
+      sortable: true,
+      cell: (r) => formatDuration(r.durationMs),
+    },
+    {
+      id: 'ip',
+      header: 'IP',
+      cell: (r) => r.ip || '—',
+    },
+    {
+      id: 'userEmail',
+      header: 'User',
+      cell: (r) => r.userEmail || '—',
+    },
+  ];
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
-        title="Request Logs"
-        description="HTTP request logs and API activity"
+        title="Request logs"
+        description="Filterable HTTP request history with expandable detail."
         actions={
-          <button
-            type="button"
-            onClick={() =>
-              void adminDownload(
-                '/api/admin/logs/export',
-                {
-                  search: debouncedSearch || undefined,
-                  method: method || undefined,
-                },
-                'request-logs.csv',
-              )
-            }
-            className="flex items-center gap-2 rounded-lg bg-[var(--color-accent)] px-4 py-2 font-medium text-white"
-          >
-            <Download className="h-4 w-4" />
-            Export CSV
-          </button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              loading={exporting}
+              onClick={async () => {
+                setExporting(true);
+                try {
+                  await adminDownload(
+                    '/api/admin/logs/export',
+                    { ...params, format: 'csv' },
+                    'request-logs.csv',
+                  );
+                } finally {
+                  setExporting(false);
+                }
+              }}
+            >
+              Export CSV
+            </Button>
+            <Button
+              size="sm"
+              loading={exporting}
+              onClick={async () => {
+                setExporting(true);
+                try {
+                  await adminDownload(
+                    '/api/admin/logs/export',
+                    { ...params, format: 'xlsx' },
+                    'request-logs.xlsx',
+                  );
+                } finally {
+                  setExporting(false);
+                }
+              }}
+            >
+              Export Excel
+            </Button>
+          </div>
         }
       />
 
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-muted)]" />
-          <input
-            type="text"
-            placeholder="Search logs..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
+      <FilterBar
+        filters={[
+          { type: 'text', key: 'search', label: 'Search', placeholder: 'path, IP, email…' },
+          {
+            type: 'select',
+            key: 'method',
+            label: 'Method',
+            options: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((v) => ({
+              value: v,
+              label: v,
+            })),
+          },
+          { type: 'text', key: 'path', label: 'Path' },
+          { type: 'text', key: 'statusMin', label: 'Status ≥' },
+          { type: 'text', key: 'statusMax', label: 'Status ≤' },
+          { type: 'date', key: 'from', label: 'From' },
+          { type: 'date', key: 'to', label: 'To' },
+          { type: 'text', key: 'os', label: 'OS' },
+          { type: 'text', key: 'browser', label: 'Browser' },
+          { type: 'text', key: 'deviceType', label: 'Device' },
+          { type: 'text', key: 'authStatus', label: 'Auth' },
+          { type: 'text', key: 'ip', label: 'IP' },
+          { type: 'text', key: 'userEmail', label: 'User email' },
+        ]}
+      />
+
+      {error && !data ? (
+        <ErrorState message={error} onRetry={() => window.location.reload()} />
+      ) : (
+        <div className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+          <DataTable
+            columns={columns}
+            rows={data?.items ?? []}
+            total={data?.total ?? 0}
+            page={page}
+            pageSize={pageSize}
+            loading={loading && !data}
+            sortBy={sortBy}
+            sortDir={sort}
+            onSort={(id) => {
+              if (sortBy === id) {
+                setMany({ sort: sort === 'asc' ? 'desc' : 'asc' }, false);
+              } else {
+                setMany({ sortBy: id, sort: 'desc' }, false);
+              }
             }}
-            className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-2 pl-10 pr-4"
+            onPageChange={(p) => setMany({ page: String(p) }, false)}
+            onPageSizeChange={(s) =>
+              setMany({ pageSize: String(s), page: '1' }, false)
+            }
+            expandable
+            empty="No request logs match these filters."
+            renderExpanded={(r) => (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <div className="font-semibold text-[var(--color-ink)]">
+                    Request ID
+                  </div>
+                  <CopyValue value={r.requestId} />
+                </div>
+                <div>
+                  <div className="font-semibold text-[var(--color-ink)]">
+                    User agent
+                  </div>
+                  <p className="break-all">{r.userAgent || '—'}</p>
+                </div>
+                <div>
+                  <div className="font-semibold text-[var(--color-ink)]">
+                    Referrer
+                  </div>
+                  <p className="break-all">{r.referrer || '—'}</p>
+                </div>
+                <div>
+                  <div className="font-semibold text-[var(--color-ink)]">
+                    Client
+                  </div>
+                  <p>
+                    {[r.os, r.browser, r.deviceType, r.authStatus]
+                      .filter(Boolean)
+                      .join(' · ') || '—'}
+                  </p>
+                </div>
+                {r.errorMessage ? (
+                  <div className="sm:col-span-2">
+                    <div className="font-semibold text-[var(--color-danger)]">
+                      Error
+                    </div>
+                    <p>{r.errorMessage}</p>
+                  </div>
+                ) : null}
+                {r.queryJson ? (
+                  <div className="sm:col-span-2">
+                    <div className="font-semibold">Query</div>
+                    <pre className="mt-1 overflow-x-auto rounded-lg bg-[var(--color-canvas)] p-2">
+                      {r.queryJson}
+                    </pre>
+                  </div>
+                ) : null}
+                {r.bodyJson ? (
+                  <div className="sm:col-span-2">
+                    <div className="font-semibold">Body</div>
+                    <pre className="mt-1 max-h-40 overflow-auto rounded-lg bg-[var(--color-canvas)] p-2">
+                      {r.bodyJson}
+                    </pre>
+                  </div>
+                ) : null}
+                <SeverityBadge
+                  severity={
+                    r.statusCode >= 500
+                      ? 'error'
+                      : r.statusCode >= 400
+                        ? 'warning'
+                        : 'info'
+                  }
+                />
+              </div>
+            )}
           />
         </div>
-        <select
-          value={method}
-          onChange={(e) => {
-            setMethod(e.target.value);
-            setPage(1);
-          }}
-          className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2"
-        >
-          <option value="">All Methods</option>
-          {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {data && data.items.length === 0 ? (
-        <EmptyState
-          icon={FileText}
-          title="No logs found"
-          description="No logs match your search criteria"
-        />
-      ) : data ? (
-        <DataTable
-          pagination={{
-            page: data.page,
-            totalPages,
-            total: data.total,
-            onPageChange: setPage,
-          }}
-        >
-          <thead className="bg-[var(--color-surface-2)]">
-            <tr>
-              {['Timestamp', 'Method', 'Path', 'Status', 'Duration', 'User', 'IP'].map(
-                (h) => (
-                  <th
-                    key={h}
-                    className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-[var(--color-muted)]"
-                  >
-                    {h}
-                  </th>
-                ),
-              )}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--color-border)]">
-            {data.items.map((log) => (
-              <tr key={log.id} className="hover:bg-[var(--color-surface-2)]">
-                <td className="whitespace-nowrap px-6 py-4 text-xs text-[var(--color-muted)]">
-                  {formatDate(log.createdAt)}
-                </td>
-                <td className="whitespace-nowrap px-6 py-4 text-xs font-semibold">
-                  {log.method}
-                </td>
-                <td className="max-w-md truncate px-6 py-4 text-xs font-mono">
-                  {log.path}
-                </td>
-                <td className="whitespace-nowrap px-6 py-4">
-                  <SeverityBadge
-                    severity={statusSeverity(log.statusCode)}
-                    label={String(log.statusCode)}
-                  />
-                </td>
-                <td className="whitespace-nowrap px-6 py-4 text-xs">
-                  {formatDuration(log.durationMs)}
-                </td>
-                <td className="max-w-[150px] truncate px-6 py-4 text-xs text-[var(--color-muted)]">
-                  {log.userEmail || '—'}
-                </td>
-                <td className="whitespace-nowrap px-6 py-4 font-mono text-xs text-[var(--color-muted)]">
-                  {log.ip || '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </DataTable>
-      ) : null}
+      )}
     </div>
+  );
+}
+
+export default function LogsPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <LogsInner />
+    </Suspense>
   );
 }

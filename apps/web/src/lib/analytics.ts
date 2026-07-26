@@ -35,6 +35,17 @@ function detectBrowser(): string {
   return 'other';
 }
 
+function detectOs(): string {
+  if (typeof navigator === 'undefined') return 'unknown';
+  const ua = navigator.userAgent;
+  if (/Windows/i.test(ua)) return 'windows';
+  if (/Android/i.test(ua)) return 'android';
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
+  if (/Mac OS X|Macintosh/i.test(ua)) return 'macos';
+  if (/Linux/i.test(ua)) return 'linux';
+  return 'other';
+}
+
 /** Fire-and-forget analytics — never blocks UI or throws to callers. */
 export function trackEvent(
   type: AnalyticsEventInput['type'],
@@ -47,6 +58,7 @@ export function trackEvent(
     tool: extra?.tool,
     device: detectDevice(),
     browser: detectBrowser(),
+    os: detectOs(),
     sessionId: getSessionId(),
   };
 
