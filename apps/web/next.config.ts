@@ -8,13 +8,23 @@ try {
   // keep default
 }
 
+// Object storage origin — the browser PUTs upload parts and GETs downloads
+// directly against presigned URLs, so CSP connect-src must allow it.
+const storageUrl = process.env.NEXT_PUBLIC_STORAGE_URL || 'http://localhost:9000';
+let storageOrigin = 'http://localhost:9000';
+try {
+  storageOrigin = new URL(storageUrl).origin;
+} catch {
+  // keep default
+}
+
 const csp = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://pagead2.googlesyndication.com https://www.googletagservices.com https://www.google.com https://partner.googleadservices.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https:",
-  `connect-src 'self' ${apiOrigin} https://pagead2.googlesyndication.com`,
+  `connect-src 'self' ${apiOrigin} ${storageOrigin} https://pagead2.googlesyndication.com`,
   "worker-src 'self' blob:",
   "frame-src 'self' https://googleads.g.doubleclick.net https://tpc.googlesyndication.com",
   "object-src 'none'",

@@ -34,6 +34,7 @@ export async function apiFetch<T = unknown>(
     ...init,
     headers,
     credentials: 'include',
+    cache: 'no-store',
   });
 
   if (!res.ok) {

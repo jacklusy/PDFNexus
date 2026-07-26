@@ -1,16 +1,16 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import type { FileKind } from '@pdfnexus/shared';
+import type { CompleteUploadResponse, FileKind } from '@pdfnexus/shared';
 import { trackEvent } from '@/lib/analytics';
 import { revokeObjectUrl, trackObjectUrl } from '@/lib/pdf/pdfHelpers';
+import { getAuthMe, mimeTypeForKind, triggerBrowserDownload } from './api';
 import {
-  getAuthMe,
-  triggerBrowserDownload,
-  uploadAndEmailDownload,
-  uploadFinalFile,
-  type UploadFinalResponse,
-} from './api';
+  uploadFileDirect,
+  UploadCancelledError,
+  type DirectUploadHandle,
+  type UploadProgress,
+} from './multipartUpload';
 
 export interface GatedDownloadResult {
   localBlobUrl: string;
@@ -42,11 +42,13 @@ type PendingUpload = {
  * Download gate:
  * 1. Client creates final blob
  * 2. If not verified → EmailVerifyModal (email only) → branded download email
- * 3. If verified → POST /api/files → immediate browser download
+ * 3. If verified → direct-to-storage multipart upload → immediate download
  */
 export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOptions) {
   const pendingRef = useRef<PendingUpload | null>(null);
+  const uploadHandleRef = useRef<DirectUploadHandle | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [result, setResult] = useState<GatedDownloadResult | null>(null);
 
   const clearResult = useCallback(() => {
@@ -56,6 +58,33 @@ export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOption
     });
   }, []);
 
+  const runDirectUpload = useCallback(
+    async (
+      blob: Blob,
+      fileName: string,
+      kind: FileKind,
+      email?: string
+    ): Promise<CompleteUploadResponse> => {
+      setIsUploading(true);
+      setUploadProgress(null);
+      const handle = uploadFileDirect(blob, {
+        fileName,
+        mimeType: mimeTypeForKind(kind),
+        ...(email ? { email, sendEmail: true } : {}),
+        onProgress: setUploadProgress,
+      });
+      uploadHandleRef.current = handle;
+      try {
+        return await handle.promise;
+      } finally {
+        uploadHandleRef.current = null;
+        setIsUploading(false);
+        setUploadProgress(null);
+      }
+    },
+    []
+  );
+
   const uploadAndFinish = useCallback(
     async (
       blob: Blob,
@@ -63,32 +92,24 @@ export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOption
       kind: FileKind,
       pageCount?: number
     ): Promise<GatedDownloadResult> => {
-      setIsUploading(true);
-      try {
-        const uploaded: UploadFinalResponse = await uploadFinalFile(blob, {
-          fileName,
-          kind,
-        });
-        const localBlobUrl = trackObjectUrl(URL.createObjectURL(blob));
-        const gated: GatedDownloadResult = {
-          localBlobUrl,
-          downloadUrl: uploaded.downloadUrl || '',
-          fileName,
-          size: blob.size,
-          pageCount,
-          emailQueued: false,
-          kind,
-        };
-        setResult(gated);
-        trackEvent(kind === 'docx' ? 'convert' : 'merge', {
-          tool: kind === 'docx' ? 'pdf-to-word' : 'merge',
-        });
-        return gated;
-      } finally {
-        setIsUploading(false);
-      }
+      const uploaded = await runDirectUpload(blob, fileName, kind);
+      const localBlobUrl = trackObjectUrl(URL.createObjectURL(blob));
+      const gated: GatedDownloadResult = {
+        localBlobUrl,
+        downloadUrl: uploaded.downloadUrl || '',
+        fileName,
+        size: blob.size,
+        pageCount,
+        emailQueued: false,
+        kind,
+      };
+      setResult(gated);
+      trackEvent(kind === 'docx' ? 'convert' : 'merge', {
+        tool: kind === 'docx' ? 'pdf-to-word' : 'merge',
+      });
+      return gated;
     },
-    []
+    [runDirectUpload]
   );
 
   const gateDownload = useCallback(
@@ -115,6 +136,10 @@ export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOption
             );
             resolve(gated);
           } catch (err) {
+            if (err instanceof UploadCancelledError) {
+              reject(err);
+              return;
+            }
             const message =
               err instanceof Error ? err.message : 'Download gate failed. Please try again.';
             onError?.(message);
@@ -127,44 +152,45 @@ export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOption
   );
 
   /** First-time path: upload under email and send branded download-link email. */
-  const submitEmailForDownload = useCallback(async (email: string) => {
-    const pending = pendingRef.current;
-    if (!pending) {
-      throw new Error('No pending download');
-    }
+  const submitEmailForDownload = useCallback(
+    async (email: string) => {
+      const pending = pendingRef.current;
+      if (!pending) {
+        throw new Error('No pending download');
+      }
 
-    setIsUploading(true);
-    try {
-      await uploadAndEmailDownload(pending.blob, {
-        email,
-        fileName: pending.fileName,
-        kind: pending.kind,
-      });
-      const localBlobUrl = trackObjectUrl(URL.createObjectURL(pending.blob));
-      const gated: GatedDownloadResult = {
-        localBlobUrl,
-        downloadUrl: '',
-        fileName: pending.fileName,
-        size: pending.blob.size,
-        pageCount: pending.pageCount,
-        emailQueued: true,
-        awaitingEmailLink: true,
-        kind: pending.kind,
-      };
-      trackEvent(pending.kind === 'docx' ? 'convert' : 'merge', {
-        tool: pending.kind === 'docx' ? 'pdf-to-word' : 'merge',
-      });
-      pending.resolve(gated);
-      pendingRef.current = null;
-      return gated;
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Email delivery failed');
-      onError?.(error.message);
-      throw error;
-    } finally {
-      setIsUploading(false);
-    }
-  }, [onError]);
+      try {
+        await runDirectUpload(pending.blob, pending.fileName, pending.kind, email);
+        const localBlobUrl = trackObjectUrl(URL.createObjectURL(pending.blob));
+        const gated: GatedDownloadResult = {
+          localBlobUrl,
+          downloadUrl: '',
+          fileName: pending.fileName,
+          size: pending.blob.size,
+          pageCount: pending.pageCount,
+          emailQueued: true,
+          awaitingEmailLink: true,
+          kind: pending.kind,
+        };
+        trackEvent(pending.kind === 'docx' ? 'convert' : 'merge', {
+          tool: pending.kind === 'docx' ? 'pdf-to-word' : 'merge',
+        });
+        pending.resolve(gated);
+        pendingRef.current = null;
+        return gated;
+      } catch (err) {
+        if (err instanceof UploadCancelledError) {
+          pending.reject(err);
+          pendingRef.current = null;
+          throw err;
+        }
+        const error = err instanceof Error ? err : new Error('Email delivery failed');
+        onError?.(error.message);
+        throw error;
+      }
+    },
+    [onError, runDirectUpload]
+  );
 
   const resumeAfterVerify = useCallback(async () => {
     const pending = pendingRef.current;
@@ -194,6 +220,11 @@ export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOption
     }
   }, []);
 
+  /** Abort the in-flight direct upload (all parts + server session). */
+  const cancelUpload = useCallback(() => {
+    uploadHandleRef.current?.abort();
+  }, []);
+
   const downloadNow = useCallback(() => {
     if (!result || result.awaitingEmailLink) return;
     triggerBrowserDownload(result.downloadUrl || result.localBlobUrl, result.fileName);
@@ -205,9 +236,11 @@ export function useDownloadGate({ onNeedVerify, onError }: UseDownloadGateOption
     submitEmailForDownload,
     resumeAfterVerify,
     cancelPending,
+    cancelUpload,
     clearResult,
     downloadNow,
     isUploading,
+    uploadProgress,
     result,
   };
 }

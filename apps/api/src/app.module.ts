@@ -1,6 +1,7 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { validateEnv } from './config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
@@ -18,6 +19,7 @@ import { AdminModule } from './admin/admin.module';
 import { SecurityMiddleware } from './common/middleware/security.middleware';
 import { HttpRequestLogMiddleware } from './common/middleware/http-request-log.middleware';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
 
 @Module({
   imports: [
@@ -26,6 +28,11 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
       cache: true,
       envFilePath: ['.env', '../../.env', '../.env'],
       validate: validateEnv,
+    }),
+    // Generous global baseline against request floods; endpoint-specific
+    // limits (upload initiate, part URLs, email delivery) use Redis.
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'global', ttl: 60_000, limit: 300 }],
     }),
     LoggerModule.forRoot({
       pinoHttp: {
@@ -52,6 +59,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
     HttpRequestLogMiddleware,
     AllExceptionsFilter,
     { provide: APP_FILTER, useExisting: AllExceptionsFilter },
+    { provide: APP_GUARD, useClass: AppThrottlerGuard },
   ],
 })
 export class AppModule implements NestModule {

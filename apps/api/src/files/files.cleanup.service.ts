@@ -1,7 +1,8 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { FileStatus } from '@prisma/client';
+import { FileStatus, UploadSessionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { UploadsService } from './uploads.service';
 
 @Injectable()
 export class FilesCleanupService implements OnModuleInit, OnModuleDestroy {
@@ -11,12 +12,13 @@ export class FilesCleanupService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly uploads: UploadsService,
   ) {}
 
   onModuleInit(): void {
-    void this.cleanupExpired();
+    void this.runCleanup();
     this.timer = setInterval(() => {
-      void this.cleanupExpired();
+      void this.runCleanup();
     }, 60 * 60 * 1000);
     this.timer.unref?.();
   }
@@ -26,6 +28,11 @@ export class FilesCleanupService implements OnModuleInit, OnModuleDestroy {
       clearInterval(this.timer);
       this.timer = null;
     }
+  }
+
+  private async runCleanup(): Promise<void> {
+    await this.cleanupExpired();
+    await this.cleanupStaleUploadSessions();
   }
 
   async cleanupExpired(): Promise<void> {
@@ -58,6 +65,45 @@ export class FilesCleanupService implements OnModuleInit, OnModuleDestroy {
 
     if (expired.length > 0) {
       this.logger.log(`Cleaned up ${expired.length} expired file(s)`);
+    }
+  }
+
+  /** Abort direct-to-storage sessions that were never completed. */
+  async cleanupStaleUploadSessions(): Promise<void> {
+    const now = new Date();
+    const stale = await this.prisma.uploadSession.findMany({
+      where: {
+        status: {
+          in: [UploadSessionStatus.PENDING, UploadSessionStatus.UPLOADING],
+        },
+        expiresAt: { lt: now },
+      },
+      take: 100,
+    });
+
+    for (const session of stale) {
+      await this.uploads.abortSessionStorage(session);
+      await this.prisma.$transaction([
+        this.prisma.uploadSession.update({
+          where: { id: session.id },
+          data: { status: UploadSessionStatus.ABORTED },
+        }),
+        ...(session.storedFileId
+          ? [
+              this.prisma.storedFile.updateMany({
+                where: {
+                  id: session.storedFileId,
+                  status: FileStatus.PENDING,
+                },
+                data: { status: FileStatus.FAILED },
+              }),
+            ]
+          : []),
+      ]);
+    }
+
+    if (stale.length > 0) {
+      this.logger.log(`Aborted ${stale.length} stale upload session(s)`);
     }
   }
 }

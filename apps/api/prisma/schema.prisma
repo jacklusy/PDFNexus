@@ -24,6 +24,14 @@ enum DownloadChannel {
   EMAIL
 }
 
+enum UploadSessionStatus {
+  PENDING
+  UPLOADING
+  COMPLETED
+  ABORTED
+  FAILED
+}
+
 enum AdminUserStatus {
   ACTIVE
   LOCKED
@@ -99,12 +107,51 @@ model StoredFile {
   expiresAt     DateTime
   downloads     Download[]
   logs          ProcessingLog[]
+  uploadSession UploadSession?
 
   @@index([ownerEmail, createdAt])
   @@index([expiresAt, status])
   @@index([storageKey])
   @@index([createdAt])
   @@index([status])
+}
+
+/// Direct-to-storage multipart upload session (S3 multipart or single presigned PUT).
+model UploadSession {
+  id             String              @id @default(cuid())
+  ownerEmail     String
+  fileName       String
+  sizeBytes      Int
+  kind           FileKind
+  storageKey     String
+  /// S3 multipart UploadId; null when the file fits a single presigned PUT.
+  s3UploadId     String?
+  partSize       Int
+  totalParts     Int
+  completedParts Int                 @default(0)
+  status         UploadSessionStatus @default(PENDING)
+  sendEmail      Boolean             @default(false)
+  storedFileId   String?             @unique
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  expiresAt      DateTime
+  storedFile     StoredFile?         @relation(fields: [storedFileId], references: [id], onDelete: SetNull)
+  parts          UploadPart[]
+
+  @@index([status, expiresAt])
+  @@index([ownerEmail, createdAt])
+}
+
+model UploadPart {
+  id          String        @id @default(cuid())
+  sessionId   String
+  partNumber  Int
+  sizeBytes   Int
+  etag        String        @default("")
+  completedAt DateTime      @default(now())
+  session     UploadSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, partNumber])
 }
 
 model Download {

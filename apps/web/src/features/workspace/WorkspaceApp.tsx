@@ -43,6 +43,22 @@ const ConvertToWordModal = dynamic(
   { ssr: false }
 );
 
+function formatTransferBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${bytes} B`;
+}
+
+function formatTransferSpeed(bps: number): string {
+  return bps > 0 ? `${formatTransferBytes(bps)}/s` : '—';
+}
+
+function formatTransferEta(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds)) return 'ETA —';
+  if (seconds >= 60) return `ETA ${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return `ETA ${seconds}s`;
+}
+
 export default function WorkspaceApp() {
   const toast = useToast();
   const [files, setFiles] = useState<PDFFile[]>([]);
@@ -122,9 +138,11 @@ export default function WorkspaceApp() {
     gateDownload,
     submitEmailForDownload,
     cancelPending,
+    cancelUpload,
     clearResult,
     downloadNow,
     isUploading,
+    uploadProgress,
     result: gatedResult,
   } = useDownloadGate({
     onNeedVerify: () => setVerifyOpen(true),
@@ -579,7 +597,13 @@ export default function WorkspaceApp() {
         pageCount: pages.length,
       });
     } catch (err) {
-      if (err instanceof Error && err.message === 'Verification cancelled') return;
+      if (
+        err instanceof Error &&
+        (err.message === 'Verification cancelled' ||
+          err.name === 'UploadCancelledError')
+      ) {
+        return;
+      }
       console.error('Merge failure:', err);
       toast.error(
         'Merge failed',
@@ -890,12 +914,43 @@ export default function WorkspaceApp() {
                 {isUploading ? 'Uploading final file…' : 'Merging Pages...'}
               </h3>
               <p className="mt-1 text-xs text-slate-400">Please keep this window open.</p>
-              <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                <div className="mx-auto h-1.5 w-3/4 animate-pulse rounded-full bg-teal-700" />
-              </div>
-              <span className="mt-4 max-w-full truncate rounded-full border border-teal-100 bg-teal-50 px-3 py-1 text-[10px] font-bold text-teal-800">
-                {isUploading ? 'Secure upload after verification' : mergeStep}
-              </span>
+              {isUploading && uploadProgress ? (
+                <>
+                  <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-1.5 rounded-full bg-teal-700 transition-all duration-300 ease-out"
+                      style={{ width: `${uploadProgress.percent}%` }}
+                    />
+                  </div>
+                  <div className="mt-3 flex w-full items-center justify-between font-mono text-[10px] text-slate-500">
+                    <span>
+                      {formatTransferBytes(uploadProgress.bytesSent)} /{' '}
+                      {formatTransferBytes(uploadProgress.totalBytes)}
+                    </span>
+                    <span>{formatTransferSpeed(uploadProgress.speedBps)}</span>
+                    <span>{formatTransferEta(uploadProgress.etaSeconds)}</span>
+                    <span className="font-bold text-teal-800">
+                      {uploadProgress.percent}%
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={cancelUpload}
+                    className="mt-5 cursor-pointer rounded-lg border border-slate-200 px-4 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+                  >
+                    Cancel Upload
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="mt-5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div className="mx-auto h-1.5 w-3/4 animate-pulse rounded-full bg-teal-700" />
+                  </div>
+                  <span className="mt-4 max-w-full truncate rounded-full border border-teal-100 bg-teal-50 px-3 py-1 text-[10px] font-bold text-teal-800">
+                    {isUploading ? 'Preparing secure upload…' : mergeStep}
+                  </span>
+                </>
+              )}
             </div>
           </motion.div>
         )}

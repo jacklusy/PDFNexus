@@ -2,7 +2,13 @@ import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import cookieParser from 'cookie-parser';
-import { json, urlencoded } from 'express';
+import {
+  json,
+  urlencoded,
+  type Request,
+  type Response,
+  type NextFunction,
+} from 'express';
 import { AppModule } from './app.module';
 
 function normalizeOrigin(value: string): string | null {
@@ -52,27 +58,52 @@ async function bootstrap() {
   const httpAdapter = app.getHttpAdapter().getInstance();
   if (typeof httpAdapter.set === 'function') {
     httpAdapter.set('trust proxy', trustProxy);
+    // Credentialed cross-origin fetches must never be served from browser
+    // cache via ETag/304 — Chrome can then re-apply a stale ACAO:* and fail.
+    httpAdapter.set('etag', false);
   }
 
+  // Reflect the request Origin when allow-listed. Never emit ACAO:* —
+  // credentials:include forbids the wildcard and the browser will block.
   app.enableCors({
-    origin: [...origins],
+    origin: (
+      requestOrigin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
+      if (!requestOrigin || origins.has(requestOrigin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    maxAge: 86400,
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'X-Upload-Token',
+    ],
+    maxAge: 600,
   });
 
   app.use(cookieParser());
   app.use(json({ limit: ocrBodyLimit }));
   app.use(urlencoded({ extended: true, limit: ocrBodyLimit }));
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
 
   app.enableShutdownHooks();
 
   await app.listen(port, '0.0.0.0');
   const logger = app.get(Logger);
   logger.log(`API listening on http://0.0.0.0:${port} (prefix=/api)`);
+  logger.log(`CORS origins: ${[...origins].join(', ')}`);
 
-  const gemini = config.get<string>('geminiApiKey') ?? config.get<string>('GEMINI_API_KEY');
+  const gemini =
+    config.get<string>('geminiApiKey') ?? config.get<string>('GEMINI_API_KEY');
   if (!gemini) {
     logger.warn(
       'GEMINI_API_KEY not set — OCR endpoint will return 503 with fallback',

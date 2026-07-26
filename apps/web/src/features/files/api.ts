@@ -9,14 +9,6 @@ export interface AuthMeResponse {
   email?: string | null;
 }
 
-export interface UploadFinalResponse {
-  id: string;
-  downloadUrl: string;
-  emailQueued?: boolean;
-  originalName?: string;
-  kind?: FileKind;
-}
-
 export async function getAuthMe(): Promise<AuthMeResponse> {
   try {
     const me = await apiFetch<AuthMeResponse & { authenticated?: boolean }>(
@@ -44,43 +36,11 @@ export async function verifyOtp(email: string, code: string): Promise<AuthMeResp
   return apiPostJson<AuthMeResponse>('/api/auth/verify', { email, code });
 }
 
-export async function uploadFinalFile(
-  blob: Blob,
-  options: {
-    fileName: string;
-    kind: FileKind;
-  }
-): Promise<UploadFinalResponse> {
-  const form = new FormData();
-  form.append('file', blob, options.fileName);
-  form.append('kind', options.kind);
-  form.append('originalName', options.fileName);
-
-  return apiFetch<UploadFinalResponse>('/api/files', {
-    method: 'POST',
-    body: form,
-  });
-}
-
-/** First-time download: upload + branded email with claim/download button (no cookie yet). */
-export async function uploadAndEmailDownload(
-  blob: Blob,
-  options: {
-    email: string;
-    fileName: string;
-    kind: FileKind;
-  }
-): Promise<UploadFinalResponse> {
-  const form = new FormData();
-  form.append('file', blob, options.fileName);
-  form.append('kind', options.kind);
-  form.append('originalName', options.fileName);
-  form.append('email', options.email);
-
-  return apiFetch<UploadFinalResponse>('/api/files/email-delivery', {
-    method: 'POST',
-    body: form,
-  });
+/** MIME type sent to the upload API so the server can classify the file. */
+export function mimeTypeForKind(kind: FileKind): string {
+  return kind === 'docx'
+    ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    : 'application/pdf';
 }
 
 export function triggerBrowserDownload(url: string, fileName: string): void {

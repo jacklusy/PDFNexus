@@ -1,35 +1,17 @@
 import {
   Controller,
   Get,
-  Post,
   Param,
   Query,
   Req,
   Res,
-  UploadedFile,
-  UseGuards,
-  UseInterceptors,
-  BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
-import { ConfigService } from '@nestjs/config';
-import { emailSchema, ErrorCodes } from '@pdfnexus/shared';
-import { VerifiedEmailGuard } from '../common/guards/verified-email.guard';
-import { VerifiedEmail } from '../common/decorators/verified-email.decorator';
+import { ErrorCodes } from '@pdfnexus/shared';
 import { CookieService } from '../auth/cookie.service';
 import { AuthEmailService } from '../auth/auth-email.service';
 import { FilesService } from './files.service';
-import { DEFAULT_MAX_UPLOAD_BYTES } from './upload-multer.options';
-
-function clientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.length > 0) {
-    return forwarded.split(',')[0].trim();
-  }
-  return req.socket.remoteAddress || 'unknown';
-}
 
 @Controller('files')
 export class FilesController {
@@ -37,64 +19,7 @@ export class FilesController {
     private readonly files: FilesService,
     private readonly cookies: CookieService,
     private readonly auth: AuthEmailService,
-    private readonly config: ConfigService,
   ) {}
-
-  @Post()
-  @UseGuards(VerifiedEmailGuard)
-  @UseInterceptors(FileInterceptor('file'))
-  async upload(
-    @VerifiedEmail() email: string,
-    @UploadedFile() file: Express.Multer.File,
-    @Req() req: Request,
-  ) {
-    const max =
-      this.config.get<number>('MAX_UPLOAD_BYTES') ?? DEFAULT_MAX_UPLOAD_BYTES;
-    if (file && file.size > max) {
-      throw new BadRequestException({
-        error: `File exceeds maximum upload size (${Math.round(max / (1024 * 1024))}MB)`,
-        code: ErrorCodes.FILE_TOO_LARGE,
-      });
-    }
-    const sendEmail =
-      req.body?.sendEmail === 'true' || req.body?.sendEmail === true;
-    return this.files.upload(email, file, Boolean(sendEmail));
-  }
-
-  /**
-   * First download: no cookie yet. Uploads the file and emails a branded
-   * one-click claim link that verifies the address and downloads the file.
-   */
-  @Post('email-delivery')
-  @UseInterceptors(FileInterceptor('file'))
-  async emailDelivery(
-    @UploadedFile() file: Express.Multer.File,
-    @Req() req: Request,
-  ) {
-    const max =
-      this.config.get<number>('MAX_UPLOAD_BYTES') ?? DEFAULT_MAX_UPLOAD_BYTES;
-    if (file && file.size > max) {
-      throw new BadRequestException({
-        error: `File exceeds maximum upload size (${Math.round(max / (1024 * 1024))}MB)`,
-        code: ErrorCodes.FILE_TOO_LARGE,
-      });
-    }
-
-    const rawEmail = String(req.body?.email ?? '');
-    const parsed = emailSchema.safeParse(rawEmail);
-    if (!parsed.success) {
-      throw new BadRequestException({
-        error: 'Valid email is required',
-        code: ErrorCodes.VALIDATION_ERROR,
-      });
-    }
-
-    return this.files.uploadForEmailDelivery(
-      parsed.data,
-      file,
-      clientIp(req),
-    );
-  }
 
   /** Magic link from email: set verified cookie, then redirect to the file. */
   @Get('claim-download')

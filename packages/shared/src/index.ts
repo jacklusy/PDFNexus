@@ -21,6 +21,8 @@ export const ErrorCodes = {
   FILE_INVALID: 'FILE_INVALID',
   FILE_TOO_LARGE: 'FILE_TOO_LARGE',
   FILE_NOT_FOUND: 'FILE_NOT_FOUND',
+  UPLOAD_SESSION_INVALID: 'UPLOAD_SESSION_INVALID',
+  UPLOAD_INCOMPLETE: 'UPLOAD_INCOMPLETE',
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   WEAK_PASSWORD: 'WEAK_PASSWORD',
 } as const;
@@ -76,6 +78,65 @@ export type OcrRequestInput = z.infer<typeof ocrRequestSchema>;
 
 export const FILE_KINDS = ['merged_pdf', 'docx'] as const;
 export type FileKind = (typeof FILE_KINDS)[number];
+
+/** Fixed multipart part size (uniform parts satisfy S3 and R2 constraints). */
+export const UPLOAD_PART_SIZE_BYTES = 10 * 1024 * 1024;
+
+export const initiateUploadSchema = z.object({
+  fileName: z.string().trim().min(1).max(255),
+  sizeBytes: z.number().int().positive(),
+  mimeType: z.string().max(255).optional().default(''),
+  email: emailSchema.optional(),
+  sendEmail: z.boolean().optional().default(false),
+});
+
+export const uploadPartUrlsSchema = z.object({
+  partNumbers: z
+    .array(z.number().int().min(1).max(10_000))
+    .min(1)
+    .max(25),
+});
+
+export const uploadReportPartSchema = z.object({
+  etag: z.string().max(256).optional(),
+});
+
+export type InitiateUploadInput = z.infer<typeof initiateUploadSchema>;
+export type UploadPartUrlsInput = z.infer<typeof uploadPartUrlsSchema>;
+export type UploadReportPartInput = z.infer<typeof uploadReportPartSchema>;
+
+export type UploadMode = 'single' | 'multipart';
+
+export interface InitiateUploadResponse {
+  sessionId: string;
+  sessionToken: string;
+  fileId: string;
+  mode: UploadMode;
+  partSize: number;
+  totalParts: number;
+}
+
+export interface UploadPartUrl {
+  partNumber: number;
+  url: string;
+}
+
+export interface UploadSessionStatusResponse {
+  status: 'PENDING' | 'UPLOADING' | 'COMPLETED' | 'ABORTED' | 'FAILED';
+  totalParts: number;
+  completedParts: number[];
+}
+
+export interface CompleteUploadResponse {
+  id: string;
+  kind: string;
+  originalName: string;
+  sizeBytes: number;
+  status: string;
+  expiresAt: string;
+  downloadUrl: string;
+  emailQueued: boolean;
+}
 
 /** Laravel-style password: min 10, upper, lower, digit, special */
 export const adminPasswordSchema = z
