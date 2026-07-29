@@ -6,7 +6,7 @@ import { OverlayTool } from '@/features/tools/overlays/OverlayTool';
 export const metadata: Metadata = pageMetadata({
   title: 'Sign PDF Online — Add Electronic Signature to PDF',
   description:
-    'Place a typed or drawn electronic signature stamp on any PDF page. Position, resize, and download — local processing, not a legally binding e-sign platform.',
+    'Place a typed or drawn electronic signature stamp on any PDF page. Place the stamp with size and opacity controls, then export — local processing, not a legally binding e-sign platform.',
   path: '/sign-pdf',
 });
 
@@ -14,18 +14,18 @@ export default function Page() {
   return (
     <ToolPageShell
       title="Sign PDF"
-      description="Add an electronic signature stamp to your PDF. Type your name or draw a signature, place it on the page, and flatten it into the document."
+      description="Add an electronic signature stamp to your PDF. Type your name or draw a signature, place it with size and opacity controls, then export overlays into the document."
       path="/sign-pdf"
       howItWorks={[
         'Upload the PDF you need to sign.',
-        'Create a typed or drawn signature and place it on the correct page.',
-        'Apply overlays and download the signed PDF with the stamp embedded.',
+        'Create a typed or drawn signature and place it on the correct page with size and opacity controls.',
+        'Export overlays and download the signed PDF with the stamp embedded.',
       ]}
       privacyNote="This tool runs in your browser. Your file is not uploaded to process it."
       limits={[
         'Provides a visual electronic stamp, not a certified digital signature (PKI).',
         'Multi-page placement is supported; each stamp is placed manually.',
-        'Flattening merges overlays into page content before download.',
+        'Export merges overlays into page content.',
       ]}
       faqs={[
         {

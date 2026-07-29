@@ -1,12 +1,12 @@
 import type { MetadataRoute } from 'next';
-import { PHASE1_TOOL_ROUTES } from '@/features/tools/toolRoutes';
+import { TOOL_ROUTES } from '@/features/tools/toolRoutes';
 import { getAppUrl } from '@/lib/seo';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const appUrl = getAppUrl();
-  const toolRoutes = PHASE1_TOOL_ROUTES.map((path) => ({
+  const toolRoutes = TOOL_ROUTES.map((path) => ({
     path,
-    lastModified: '2026-07-26',
+    lastModified: '2026-07-29',
     changeFrequency: 'weekly' as const,
     priority: 0.8,
   }));

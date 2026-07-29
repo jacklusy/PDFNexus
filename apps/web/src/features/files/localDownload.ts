@@ -4,10 +4,13 @@ import { triggerBrowserDownload } from './api';
 /**
  * Immediate, ungated local download of a browser-produced Blob.
  * Does not call auth or upload APIs.
+ * Revokes the temporary object URL shortly after triggering download.
  */
 export function downloadBlobLocally(blob: Blob, fileName: string): string {
   const url = trackObjectUrl(URL.createObjectURL(blob));
   triggerBrowserDownload(url, fileName);
+  // Allow the browser to start the download, then release the URL.
+  window.setTimeout(() => revokeObjectUrl(url), 60_000);
   return url;
 }
 
@@ -45,4 +48,9 @@ export function createLocalExport(
     pageCount,
     kind,
   };
+}
+
+/** Download using an existing export URL without creating a second object URL. */
+export function downloadLocalExport(exportResult: LocalExportResult): void {
+  triggerBrowserDownload(exportResult.localBlobUrl, exportResult.fileName);
 }

@@ -6,6 +6,8 @@ import {
   type PDFPage,
   type RGB,
 } from 'pdf-lib';
+import { loadReadablePdf } from '../assertPdfReadable';
+import { addLinkAnnotation } from './addLinkAnnotation';
 import {
   formatPageNumber,
   type OverlayItem,
@@ -154,6 +156,108 @@ function drawOnPage(
           opacity,
         });
       }
+      return;
+    }
+    if (item.kind === 'highlight') {
+      const fillOpacity = Math.min(0.55, Math.max(0.15, opacity * 0.4));
+      const color = parseColor(item.color);
+      const quads =
+        item.quads && item.quads.length > 0
+          ? item.quads
+          : [{ x: item.x, y: item.y, width: item.width, height: item.height }];
+      for (const q of quads) {
+        page.drawRectangle({
+          x: q.x,
+          y: q.y,
+          width: q.width,
+          height: q.height,
+          color,
+          opacity: fillOpacity,
+          borderWidth: 0,
+        });
+      }
+      return;
+    }
+    if (item.kind === 'stickyNote') {
+      const noteColor = parseColor(item.color || '#facc15');
+      const noteW = Math.max(18, Math.min(item.width || 24, 36));
+      const noteH = Math.max(18, Math.min(item.height || 24, 36));
+      page.drawRectangle({
+        x: item.x,
+        y: item.y,
+        width: noteW,
+        height: noteH,
+        color: noteColor,
+        opacity: Math.min(1, Math.max(0.5, opacity)),
+        borderColor: rgb(0.55, 0.45, 0.05),
+        borderWidth: 0.75,
+      });
+      const label = item.author
+        ? `${item.author}: ${item.text || ''}`
+        : item.text || '';
+      if (label) {
+        page.drawText(label.slice(0, 200), {
+          x: item.x + noteW + 4,
+          y: item.y + 4,
+          size: 9,
+          font: helpers.font,
+          color: rgb(0.2, 0.2, 0.2),
+          opacity,
+          maxWidth: Math.max(80, item.width || 160),
+        });
+      }
+      return;
+    }
+    if (item.kind === 'pageComment') {
+      const text = item.text || '';
+      if (text) {
+        page.drawText(text.slice(0, 400), {
+          x: item.x,
+          y: item.y,
+          size: 10,
+          font: helpers.font,
+          color: rgb(0.15, 0.15, 0.2),
+          opacity,
+          maxWidth: Math.max(120, item.width || 240),
+        });
+      }
+      return;
+    }
+    if (item.kind === 'link') {
+      const uri = item.uri || '';
+      // Visual underline indicator
+      page.drawRectangle({
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        height: Math.max(1.5, Math.min(3, item.height * 0.15)),
+        color: rgb(0.15, 0.35, 0.85),
+        opacity: Math.min(1, opacity),
+        borderWidth: 0,
+      });
+      const label = uri ? `(link: ${uri})` : '(link)';
+      page.drawText(label.slice(0, 120), {
+        x: item.x,
+        y: item.y + 4,
+        size: 8,
+        font: helpers.font,
+        color: rgb(0.15, 0.35, 0.85),
+        opacity,
+        maxWidth: Math.max(60, item.width),
+      });
+      if (uri) {
+        try {
+          addLinkAnnotation(page, helpers.doc, {
+            x: item.x,
+            y: item.y,
+            width: Math.max(12, item.width),
+            height: Math.max(12, item.height),
+            uri,
+          });
+        } catch {
+          // Visual label already burned; annotation is best-effort
+        }
+      }
     }
   })();
 }
@@ -230,7 +334,7 @@ export async function flattenOverlays(
   overlays: OverlayItem[],
   onProgress?: (current: number, total: number) => void
 ): Promise<Uint8Array> {
-  const doc = await PDFDocument.load(pdfBytes.slice(0), { ignoreEncryption: true });
+  const doc = await loadReadablePdf(pdfBytes);
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const pages = doc.getPages();
   const total = pages.length;

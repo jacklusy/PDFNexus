@@ -5,6 +5,7 @@ import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { clearPassword, getPdfToolkit } from '../protect/pdfToolkit';
+import { sanitizeToolkitError } from '../assertPdfReadable';
 
 export function UnlockTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
@@ -39,6 +40,9 @@ export function UnlockTool() {
         name
       );
       setProgress('Downloaded unlocked PDF');
+      clearPassword(pwd);
+      pwd = '';
+      setPassword('');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       const name = e instanceof Error ? e.name : '';
@@ -49,13 +53,10 @@ export function UnlockTool() {
       ) {
         setError('Invalid password. Enter the correct password for this PDF.');
       } else {
-        setError(msg);
+        setError(sanitizeToolkitError(e));
       }
       setProgress(null);
     } finally {
-      clearPassword(pwd);
-      pwd = '';
-      setPassword('');
       setBusy(false);
     }
   };

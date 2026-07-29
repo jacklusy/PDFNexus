@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { PDFDocument } from 'pdf-lib';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { loadReadablePdf } from '../assertPdfReadable';
 import { flattenOverlays } from './flattenOverlays';
 import {
   WATERMARK_PRESETS,
@@ -72,7 +72,7 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
       }
       try {
         const buf = await file.arrayBuffer();
-        const doc = await PDFDocument.load(buf.slice(0), { ignoreEncryption: true });
+        const doc = await loadReadablePdf(buf);
         if (cancelled) return;
         const n = doc.getPageCount();
         setPageCount(n);
@@ -306,7 +306,7 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
           loading={busy}
           onClick={() => void run()}
         >
-          Flatten & download
+          Export & download
         </Button>
       }
     >

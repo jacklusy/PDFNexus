@@ -31,6 +31,9 @@ interface BulkControlsProps {
   onMoveSelectedTo: (targetIndex: number) => void;
   onConvertToWord?: () => void;
   onExtractSelected?: () => void;
+  onCropSelected?: () => void;
+  onResizeSelected?: () => void;
+  onFlattenSelected?: () => void;
 }
 
 export default function BulkControls({
@@ -44,6 +47,9 @@ export default function BulkControls({
   onMoveSelectedTo,
   onConvertToWord,
   onExtractSelected,
+  onCropSelected,
+  onResizeSelected,
+  onFlattenSelected,
 }: BulkControlsProps) {
   const [showMoveInput, setShowMoveInput] = useState(false);
   const [targetIndexString, setTargetIndexString] = useState('1');
@@ -171,6 +177,40 @@ export default function BulkControls({
             >
               <Scissors className="h-4 w-4" />
               <span className="hidden sm:inline text-xs font-semibold">Extract</span>
+            </button>
+          )}
+
+          {onCropSelected && (
+            <button
+              id="btn-bulk-crop"
+              onClick={onCropSelected}
+              title="Open Crop PDF tool"
+              className="p-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span className="hidden sm:inline text-xs font-semibold">Crop</span>
+              <span className="sm:hidden text-[10px] font-semibold">Crop</span>
+            </button>
+          )}
+
+          {onResizeSelected && (
+            <button
+              id="btn-bulk-resize"
+              onClick={onResizeSelected}
+              title="Open Resize PDF tool"
+              className="p-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span className="text-xs font-semibold">Resize</span>
+            </button>
+          )}
+
+          {onFlattenSelected && (
+            <button
+              id="btn-bulk-flatten"
+              onClick={onFlattenSelected}
+              title="Open Flatten PDF tool"
+              className="p-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span className="text-xs font-semibold">Flatten</span>
             </button>
           )}
 

@@ -3,6 +3,13 @@ import Link from 'next/link';
 import { SiteHeader, SiteFooter } from '@/components/SiteChrome';
 import { getAppUrl } from '@/lib/seo';
 
+function escapeJsonLd(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 export interface ToolFaq {
   question: string;
   answer: string;
@@ -66,12 +73,12 @@ export function ToolPageShell({
       <main className="mx-auto max-w-5xl px-6 py-10 md:px-10">
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: escapeJsonLd(jsonLd) }}
         />
         {faqLd ? (
           <script
             type="application/ld+json"
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(faqLd) }}
+            dangerouslySetInnerHTML={{ __html: escapeJsonLd(faqLd) }}
           />
         ) : null}
 

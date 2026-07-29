@@ -18,6 +18,11 @@ describe('localDownload', () => {
       createObjectURL: () => 'blob:local-test',
       revokeObjectURL: () => {},
     });
+    vi.stubGlobal('window', {
+      setTimeout: (fn: () => void, ms?: number) =>
+        setTimeout(fn, ms) as unknown as number,
+      clearTimeout: (id: number) => clearTimeout(id),
+    });
     vi.stubGlobal('document', {
       createElement: (tag: string) => {
         const el = {

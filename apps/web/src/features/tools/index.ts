@@ -3,4 +3,4 @@ export { zipOutputs } from './zipOutputs';
 export { ToolWorkbench } from './ToolWorkbench';
 export type { ToolFile } from './ToolWorkbench';
 export { ToolPageShell } from './ToolPageShell';
-export { PHASE1_TOOL_ROUTES, TOOL_NAV } from './toolRoutes';
+export { PHASE1_TOOL_ROUTES, PHASE2_TOOL_ROUTES, TOOL_ROUTES, TOOL_NAV } from './toolRoutes';

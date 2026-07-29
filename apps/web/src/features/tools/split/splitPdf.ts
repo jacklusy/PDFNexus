@@ -1,4 +1,5 @@
 import { PDFDocument } from 'pdf-lib';
+import { loadReadablePdf } from '../assertPdfReadable';
 import { parsePageRanges, chunkEveryN, individualPageRanges } from '../parsePageRanges';
 
 export type SplitMode = 'ranges' | 'every' | 'individual' | 'at';
@@ -120,9 +121,7 @@ export async function splitPdf(
   request: SplitRequest,
   onProgress?: (current: number, total: number) => void
 ): Promise<SplitResult> {
-  const src = await PDFDocument.load(request.bytes.slice(0), {
-    ignoreEncryption: true,
-  });
+  const src = await loadReadablePdf(request.bytes);
   const pageCount = src.getPageCount();
   const ranges = planSplitRanges(pageCount, request);
   if (ranges.length === 0) throw new Error('No output files to create.');

@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { PDFDocument } from 'pdf-lib';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { formatTransferBytes } from '@/features/transfer/transferFormat';
 import { ensurePdfWorker } from '@/lib/pdf/pdfHelpers';
+import { loadReadablePdf } from '../assertPdfReadable';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import {
   compressPdf,
@@ -13,40 +13,43 @@ import {
   type CompressPreset,
   type CompressResult,
 } from './compressPdf';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 
-async function renderPageJpeg(
-  pdfBytes: ArrayBuffer,
+async function openPdfjsDoc(pdfBytes: ArrayBuffer): Promise<PDFDocumentProxy> {
+  const pdfjs = await import('pdfjs-dist');
+  ensurePdfWorker(pdfjs);
+  const task = pdfjs.getDocument({
+    data: pdfBytes.slice(0),
+    isEvalSupported: false,
+  });
+  return task.promise;
+}
+
+async function renderPageJpegFromDoc(
+  doc: PDFDocumentProxy,
   pageIndex: number,
   maxPx: number,
   quality: number
 ): Promise<{ jpeg: Uint8Array; width: number; height: number }> {
-  const pdfjs = await import('pdfjs-dist');
-  ensurePdfWorker(pdfjs);
-  const task = pdfjs.getDocument({ data: pdfBytes.slice(0), isEvalSupported: false });
-  const doc = await task.promise;
-  try {
-    const page = await doc.getPage(pageIndex + 1);
-    const base = page.getViewport({ scale: 1 });
-    const scale = Math.min(1, maxPx / Math.max(base.width, base.height));
-    const viewport = page.getViewport({ scale: Math.max(scale, 0.2) });
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.floor(viewport.width));
-    canvas.height = Math.max(1, Math.floor(viewport.height));
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvas unavailable');
-    await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-    const blob: Blob = await new Promise((resolve, reject) => {
-      canvas.toBlob(
-        (b) => (b ? resolve(b) : reject(new Error('JPEG encode failed'))),
-        'image/jpeg',
-        quality
-      );
-    });
-    const buf = new Uint8Array(await blob.arrayBuffer());
-    return { jpeg: buf, width: canvas.width, height: canvas.height };
-  } finally {
-    await doc.destroy();
-  }
+  const page = await doc.getPage(pageIndex + 1);
+  const base = page.getViewport({ scale: 1 });
+  const scale = Math.min(1, maxPx / Math.max(base.width, base.height));
+  const viewport = page.getViewport({ scale: Math.max(scale, 0.2) });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.floor(viewport.width));
+  canvas.height = Math.max(1, Math.floor(viewport.height));
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas unavailable');
+  await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+  const blob: Blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('JPEG encode failed'))),
+      'image/jpeg',
+      quality
+    );
+  });
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  return { jpeg: buf, width: canvas.width, height: canvas.height };
 }
 
 export function CompressTool() {
@@ -60,6 +63,7 @@ export function CompressTool() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [stats, setStats] = useState<CompressResult | null>(null);
+  const pdfjsRef = useRef<PDFDocumentProxy | null>(null);
 
   const file = files[0]?.file;
   const settings = useMemo(
@@ -82,7 +86,7 @@ export function CompressTool() {
       }
       try {
         const buf = await file.arrayBuffer();
-        const doc = await PDFDocument.load(buf.slice(0), { ignoreEncryption: true });
+        const doc = await loadReadablePdf(buf);
         if (!cancelled) {
           setPageCount(doc.getPageCount());
           setError(null);
@@ -103,16 +107,22 @@ export function CompressTool() {
     setError(null);
     setStats(null);
     setProgress('Starting…');
+    let pdfjsDoc: PDFDocumentProxy | null = null;
     try {
       const bytes = await file.arrayBuffer();
+      if (rasterize) {
+        pdfjsDoc = await openPdfjsDoc(bytes);
+        pdfjsRef.current = pdfjsDoc;
+      }
       const result = await compressPdf({
         bytes,
         settings,
         rasterizePages: rasterize,
-        renderPage: (pageIndex, maxPx, quality) =>
-          renderPageJpeg(bytes, pageIndex, maxPx, quality),
-        onProgress: (c, t, msg) =>
-          setProgress(msg || `${c}/${t}`),
+        renderPage: async (pageIndex, maxPx, quality) => {
+          if (!pdfjsDoc) throw new Error('PDF.js document missing');
+          return renderPageJpegFromDoc(pdfjsDoc, pageIndex, maxPx, quality);
+        },
+        onProgress: (c, t, msg) => setProgress(msg || `${c}/${t}`),
       });
       setStats(result);
       const name = file.name.replace(/\.pdf$/i, '') + '-compressed.pdf';
@@ -125,6 +135,10 @@ export function CompressTool() {
       setError(e instanceof Error ? e.message : String(e));
       setProgress(null);
     } finally {
+      if (pdfjsDoc) {
+        await pdfjsDoc.destroy().catch(() => undefined);
+        pdfjsRef.current = null;
+      }
       setBusy(false);
     }
   };

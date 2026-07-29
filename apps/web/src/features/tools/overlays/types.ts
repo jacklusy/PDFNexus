@@ -7,7 +7,11 @@ export type OverlayKind =
   | 'arrow'
   | 'freehand'
   | 'watermark'
-  | 'pageNumber';
+  | 'pageNumber'
+  | 'highlight'
+  | 'stickyNote'
+  | 'pageComment'
+  | 'link';
 
 /** Normalized page coords: origin bottom-left, units = PDF points. */
 export interface OverlayBase {
@@ -75,13 +79,48 @@ export interface PageNumberOverlay extends OverlayBase {
   align: 'left' | 'center' | 'right';
 }
 
+export interface HighlightQuad {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface HighlightOverlay extends OverlayBase {
+  kind: 'highlight';
+  color: string;
+  /** Optional multi-quad highlight; otherwise use x,y,width,height. */
+  quads?: HighlightQuad[];
+}
+
+export interface StickyNoteOverlay extends OverlayBase {
+  kind: 'stickyNote';
+  text: string;
+  color: string;
+  author?: string;
+}
+
+export interface PageCommentOverlay extends OverlayBase {
+  kind: 'pageComment';
+  text: string;
+}
+
+export interface LinkOverlay extends OverlayBase {
+  kind: 'link';
+  uri: string;
+}
+
 export type OverlayItem =
   | SignatureOverlay
   | TextOverlay
   | ShapeOverlay
   | FreehandOverlay
   | WatermarkOverlay
-  | PageNumberOverlay;
+  | PageNumberOverlay
+  | HighlightOverlay
+  | StickyNoteOverlay
+  | PageCommentOverlay
+  | LinkOverlay;
 
 export function createId(): string {
   return `ov-${Math.random().toString(36).slice(2, 10)}`;

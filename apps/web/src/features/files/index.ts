@@ -15,6 +15,7 @@ export {
   openBlobLocally,
   revokeLocalUrl,
   createLocalExport,
+  downloadLocalExport,
 } from './localDownload';
 export type { LocalExportResult } from './localDownload';
 export { uploadFileDirect, UploadCancelledError } from './multipartUpload';

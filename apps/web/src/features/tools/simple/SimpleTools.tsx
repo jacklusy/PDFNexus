@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { PDFDocument } from 'pdf-lib';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
+import { loadReadablePdf } from '../assertPdfReadable';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 
 /** Dedicated merge UI wrapping pdf-lib (same engine as workspace). */
@@ -26,7 +27,7 @@ export function MergeTool() {
       for (let i = 0; i < files.length; i++) {
         setProgress(`Merging ${i + 1}/${files.length}…`);
         const bytes = await files[i].file.arrayBuffer();
-        const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const src = await loadReadablePdf(bytes);
         const copied = await out.copyPages(src, src.getPageIndices());
         copied.forEach((p) => out.addPage(p));
       }
@@ -88,7 +89,7 @@ export function RotateTool() {
     try {
       const { degrees } = await import('pdf-lib');
       const bytes = await file.arrayBuffer();
-      const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+      const doc = await loadReadablePdf(bytes);
       doc.getPages().forEach((p) => {
         const current = p.getRotation().angle;
         p.setRotation(degrees((current + angle) % 360));

@@ -3,6 +3,13 @@
 /**
  * Run a module worker with progress + cancel via terminate.
  */
+export class WorkerCancelledError extends Error {
+  constructor(message = 'Cancelled') {
+    super(message);
+    this.name = 'WorkerCancelledError';
+  }
+}
+
 export function runWorkerTask<TRequest, TResult>(options: {
   workerUrl: URL;
   request: TRequest;
@@ -12,8 +19,10 @@ export function runWorkerTask<TRequest, TResult>(options: {
 }): { promise: Promise<TResult>; cancel: () => void } {
   let worker: Worker | null = null;
   let settled = false;
+  let cancelled = false;
 
   const cancel = () => {
+    cancelled = true;
     if (worker) {
       worker.terminate();
       worker = null;
@@ -29,25 +38,42 @@ export function runWorkerTask<TRequest, TResult>(options: {
       reject(new Error('Worker timed out'));
     }, options.timeoutMs ?? 180_000);
 
+    const settleReject = (err: Error) => {
+      clearTimeout(timeout);
+      if (settled) return;
+      settled = true;
+      if (worker) {
+        worker.terminate();
+        worker = null;
+      }
+      reject(cancelled ? new WorkerCancelledError() : err);
+    };
+
     worker.onmessage = (event: MessageEvent) => {
       const data = event.data;
       if (data?.type === 'progress') {
-        options.onProgress?.(data.current, data.total, data.message);
+        if (!cancelled) {
+          options.onProgress?.(data.current, data.total, data.message);
+        }
         return;
       }
       clearTimeout(timeout);
+      if (settled) return;
       settled = true;
-      cancel();
+      if (worker) {
+        worker.terminate();
+        worker = null;
+      }
+      if (cancelled) {
+        reject(new WorkerCancelledError());
+        return;
+      }
       if (data?.ok) resolve(data.result as TResult);
       else reject(new Error(data?.error || 'Worker failed'));
     };
 
     worker.onerror = (err) => {
-      clearTimeout(timeout);
-      if (settled) return;
-      settled = true;
-      cancel();
-      reject(err.error ?? new Error(err.message || 'Worker error'));
+      settleReject(err.error ?? new Error(err.message || 'Worker error'));
     };
 
     worker.postMessage(options.request, options.transfer ?? []);

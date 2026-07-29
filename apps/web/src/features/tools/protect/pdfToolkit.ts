@@ -9,19 +9,23 @@ let toolkitPromise: Promise<
 export async function getPdfToolkit() {
   if (!toolkitPromise) {
     toolkitPromise = (async () => {
-      const { createPdfToolkit } = await import('pdfstudio');
-      return createPdfToolkit({
-        wasmUrl: '/qpdf.wasm',
-      });
+      try {
+        const { createPdfToolkit } = await import('pdfstudio');
+        return await createPdfToolkit({
+          wasmUrl: '/qpdf.wasm',
+        });
+      } catch (err) {
+        toolkitPromise = null;
+        throw err;
+      }
     })();
   }
   return toolkitPromise;
 }
 
-export function clearPassword(value: string): void {
-  // Best-effort: overwrite string refs are not possible in JS; callers
-  // should drop references after use. This helper exists for call-site clarity.
-  void value;
+/** Drop local password string references after use (JS strings are immutable). */
+export function clearPassword(_value: string): void {
+  void _value;
 }
 
 export function passwordStrength(password: string): {
@@ -32,9 +36,11 @@ export function passwordStrength(password: string): {
   let score = 0 as 0 | 1 | 2 | 3 | 4;
   if (password.length >= 8) score = 1;
   if (password.length >= 12) score = 2;
-  if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score = Math.max(score, 2) as 0 | 1 | 2 | 3 | 4;
+  if (/[A-Z]/.test(password) && /[a-z]/.test(password))
+    score = Math.max(score, 2) as 0 | 1 | 2 | 3 | 4;
   if (/\d/.test(password)) score = Math.min(4, score + 1) as 0 | 1 | 2 | 3 | 4;
-  if (/[^A-Za-z0-9]/.test(password)) score = Math.min(4, score + 1) as 0 | 1 | 2 | 3 | 4;
+  if (/[^A-Za-z0-9]/.test(password))
+    score = Math.min(4, score + 1) as 0 | 1 | 2 | 3 | 4;
   const labels = ['Very weak', 'Weak', 'Fair', 'Good', 'Strong'] as const;
   return { score, label: labels[score] };
 }

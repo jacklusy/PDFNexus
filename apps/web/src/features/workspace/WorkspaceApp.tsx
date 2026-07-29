@@ -11,6 +11,7 @@ import {
   ListOrdered,
   Layers,
   MoreHorizontal,
+  ListTodo,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Link from 'next/link';
@@ -40,7 +41,7 @@ import {
   EmailVerifyModal,
   useDownloadGate,
   createLocalExport,
-  downloadBlobLocally,
+  downloadLocalExport,
   revokeLocalUrl,
   type GatedDownloadResult,
   type LocalExportResult,
@@ -57,6 +58,12 @@ import VirtualizedPageGrid from '@/features/workspace/VirtualizedPageGrid';
 
 const ConvertToWordModal = dynamic(
   () => import('@/features/conversion').then((m) => m.ConvertToWordModal),
+  { ssr: false }
+);
+
+const BatchQueuePanel = dynamic(
+  () =>
+    import('@/features/workspace/BatchQueuePanel').then((m) => m.BatchQueuePanel),
   { ssr: false }
 );
 
@@ -144,6 +151,7 @@ export default function WorkspaceApp() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
   const [isConvertToWordOpen, setIsConvertToWordOpen] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
   const [isPreviewPageOrderOpen, setIsPreviewPageOrderOpen] = useState(false);
   const [fullscreenPageId, setFullscreenPageId] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
@@ -268,7 +276,7 @@ export default function WorkspaceApp() {
         if (prev?.localBlobUrl) revokeLocalUrl(prev.localBlobUrl);
         return exported;
       });
-      downloadBlobLocally(blob, fileName);
+      downloadLocalExport(exported);
       trackEvent(kind === 'docx' ? 'convert' : 'merge', {
         tool: kind === 'docx' ? 'pdf-to-word' : 'merge',
       });
@@ -841,7 +849,7 @@ export default function WorkspaceApp() {
 
   const handleLocalDownloadAgain = useCallback(() => {
     if (!localExport) return;
-    downloadBlobLocally(localExport.blob, localExport.fileName);
+    downloadLocalExport(localExport);
   }, [localExport]);
 
   const handleTransferOpen = useCallback(() => {
@@ -981,6 +989,14 @@ export default function WorkspaceApp() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => setBatchOpen(true)}
+                    className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+                  >
+                    <ListTodo className="h-3.5 w-3.5 text-teal-700" />
+                    <span className="hidden lg:inline">Batch queue</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={handleClearAll}
                     className="cursor-pointer rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
                   >
@@ -1009,6 +1025,10 @@ export default function WorkspaceApp() {
                     <DropdownItem onClick={() => setIsConvertToWordOpen(true)}>
                       <FileType className="h-3.5 w-3.5 text-teal-700" />
                       Convert to Word
+                    </DropdownItem>
+                    <DropdownItem onClick={() => setBatchOpen(true)}>
+                      <ListTodo className="h-3.5 w-3.5 text-teal-700" />
+                      Batch queue
                     </DropdownItem>
                     <DropdownItem danger onClick={handleClearAll}>
                       Reset workspace
@@ -1161,7 +1181,18 @@ export default function WorkspaceApp() {
         onMoveSelectedTo={handleMoveSelectedTo}
         onConvertToWord={() => setIsConvertToWordOpen(true)}
         onExtractSelected={() => void handleExtractSelected()}
+        onCropSelected={() => {
+          window.location.href = '/crop-pdf';
+        }}
+        onResizeSelected={() => {
+          window.location.href = '/resize-pdf';
+        }}
+        onFlattenSelected={() => {
+          window.location.href = '/flatten-pdf';
+        }}
       />
+
+      <BatchQueuePanel open={batchOpen} onClose={() => setBatchOpen(false)} />
 
       <ConvertToWordModal
         isOpen={isConvertToWordOpen}

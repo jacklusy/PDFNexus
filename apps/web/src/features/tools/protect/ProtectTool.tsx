@@ -5,6 +5,7 @@ import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { clearPassword, getPdfToolkit, passwordStrength } from './pdfToolkit';
+import { sanitizeToolkitError } from '../assertPdfReadable';
 
 export function ProtectTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
@@ -58,7 +59,7 @@ export function ProtectTool() {
       );
       setProgress('Downloaded protected PDF');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(sanitizeToolkitError(e));
       setProgress(null);
     } finally {
       clearPassword(user);

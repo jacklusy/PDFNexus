@@ -1,4 +1,5 @@
 import { PDFDocument } from 'pdf-lib';
+import { loadReadablePdf } from '../assertPdfReadable';
 import { parsePageRanges } from '../parsePageRanges';
 
 export interface ExtractRequest {
@@ -35,9 +36,7 @@ export async function extractPdfPages(
   request: ExtractRequest,
   onProgress?: (current: number, total: number) => void
 ): Promise<ExtractResult> {
-  const src = await PDFDocument.load(request.bytes.slice(0), {
-    ignoreEncryption: true,
-  });
+  const src = await loadReadablePdf(request.bytes);
   const pageCount = src.getPageCount();
   const pages = resolveExtractPages(pageCount, request);
   if (pages.length === 0) throw new Error('Select at least one page.');

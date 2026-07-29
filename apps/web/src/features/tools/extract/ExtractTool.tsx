@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { PDFDocument } from 'pdf-lib';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { loadReadablePdf } from '../assertPdfReadable';
 import { parsePageRanges, PageRangeError } from '../parsePageRanges';
 import { extractPdfPages } from '../split/extractPdf';
 
@@ -29,7 +29,7 @@ export function ExtractTool() {
       }
       try {
         const buf = await file.arrayBuffer();
-        const doc = await PDFDocument.load(buf.slice(0), { ignoreEncryption: true });
+        const doc = await loadReadablePdf(buf);
         if (!cancelled) {
           const n = doc.getPageCount();
           setPageCount(n);

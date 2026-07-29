@@ -6,7 +6,7 @@ import { OverlayTool } from '@/features/tools/overlays/OverlayTool';
 export const metadata: Metadata = pageMetadata({
   title: 'Edit PDF Online — Add Text and Shapes to PDF',
   description:
-    'Annotate PDFs with text boxes, rectangles, and highlights. Place elements on any page and download a flattened copy — free, local, no upload.',
+    'Annotate PDFs with text boxes and rectangles. Position elements via coordinates, then export overlays into a flattened copy — free, local, no upload.',
   path: '/edit-pdf',
 });
 
@@ -14,12 +14,12 @@ export default function Page() {
   return (
     <ToolPageShell
       title="Edit PDF"
-      description="Add text labels, rectangles, and basic shapes on top of your PDF pages. Position elements visually, then export a flattened document."
+      description="Add text labels, rectangles, and basic shapes on top of your PDF pages. Place tools with coordinate controls, then export overlays into the document."
       path="/edit-pdf"
       howItWorks={[
         'Upload the PDF you want to annotate.',
-        'Select text or shape tools and click on the page to place elements.',
-        'Adjust placement, then download the edited PDF with overlays embedded.',
+        'Select text or shape tools and set position via coordinates.',
+        'Place tools, then download the edited PDF with overlays exported into the pages.',
       ]}
       privacyNote="This tool runs in your browser. Your file is not uploaded to process it."
       limits={[

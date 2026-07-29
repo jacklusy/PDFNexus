@@ -3,6 +3,7 @@
  */
 
 import { PDFDocument } from 'pdf-lib';
+import { assertPdfReadable } from '../assertPdfReadable';
 
 export type CompressPreset = 'low' | 'balanced' | 'high' | 'custom';
 
@@ -86,11 +87,10 @@ export async function compressPdf(options: {
   const started = performance.now();
   const originalSize = options.bytes.byteLength;
   const { settings } = options;
+  await assertPdfReadable(options.bytes);
 
   if (options.rasterizePages && options.renderPage) {
-    const src = await PDFDocument.load(options.bytes.slice(0), {
-      ignoreEncryption: true,
-    });
+    const src = await PDFDocument.load(options.bytes.slice(0));
     const pageCount = src.getPageCount();
     const out = await PDFDocument.create();
     if (settings.stripMetadata) stripInfo(out);
@@ -127,9 +127,7 @@ export async function compressPdf(options: {
 
   // Structural + metadata path (always available)
   options.onProgress?.(0, 2, 'Optimizing structure');
-  const doc = await PDFDocument.load(options.bytes.slice(0), {
-    ignoreEncryption: true,
-  });
+  const doc = await PDFDocument.load(options.bytes.slice(0));
   if (settings.stripMetadata) stripInfo(doc);
   options.onProgress?.(1, 2, 'Saving');
   const bytes = await doc.save({ useObjectStreams: true });

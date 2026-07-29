@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { PDFDocument } from 'pdf-lib';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { loadReadablePdf } from '../assertPdfReadable';
 import { zipOutputs } from '../zipOutputs';
 import { planSplitRanges, type SplitMode } from './splitPdf';
-import { runWorkerTask } from '../runInWorker';
+import { runWorkerTask, WorkerCancelledError } from '../runInWorker';
 
 function baseName(name: string) {
   return name.replace(/\.pdf$/i, '') || 'split';
@@ -37,7 +37,7 @@ export function SplitTool() {
       }
       try {
         const buf = await file.arrayBuffer();
-        const doc = await PDFDocument.load(buf.slice(0), { ignoreEncryption: true });
+        const doc = await loadReadablePdf(buf);
         if (!cancelled) {
           setPageCount(doc.getPageCount());
           setRangeText(`1-${doc.getPageCount()}`);
@@ -126,8 +126,12 @@ export function SplitTool() {
       }
       setProgress(`Done — ${named.length} file${named.length === 1 ? '' : 's'}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setProgress(null);
+      if (e instanceof WorkerCancelledError) {
+        setProgress(null);
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+        setProgress(null);
+      }
     } finally {
       cancelRef.current = null;
       setBusy(false);
@@ -208,6 +212,10 @@ export function SplitTool() {
                 placeholder="1-5; 6-10; 11-15"
                 disabled={busy}
               />
+              <span className="mt-1 block text-xs text-[var(--color-muted)]">
+                Use <code>;</code> between output files. Commas alone merge pages into one
+                contiguous range (e.g. <code>1,3,5</code> → pages 1–5 in a single file).
+              </span>
             </label>
           ) : null}
 

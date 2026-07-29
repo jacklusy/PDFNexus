@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { PDFDocument } from 'pdf-lib';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { loadReadablePdf } from '../assertPdfReadable';
 import { parsePageRanges } from '../parsePageRanges';
 import { pdfToImages, type ImageExportFormat } from './pdfToImages';
 
@@ -32,7 +32,7 @@ export function PdfToImagesTool() {
       }
       try {
         const buf = await file.arrayBuffer();
-        const doc = await PDFDocument.load(buf.slice(0), { ignoreEncryption: true });
+        const doc = await loadReadablePdf(buf);
         if (!cancelled) {
           const n = doc.getPageCount();
           setPageCount(n);

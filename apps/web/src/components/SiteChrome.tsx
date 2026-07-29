@@ -29,6 +29,11 @@ const toolLinks = [
   { href: '/pdf-to-jpg', label: 'PDF to JPG' },
   { href: '/jpg-to-pdf', label: 'JPG to PDF' },
   { href: '/rotate-pdf', label: 'Rotate PDF' },
+  { href: '/crop-pdf', label: 'Crop PDF' },
+  { href: '/resize-pdf', label: 'Resize PDF' },
+  { href: '/flatten-pdf', label: 'Flatten PDF' },
+  { href: '/annotate-pdf', label: 'Annotate PDF' },
+  { href: '/edit-links-pdf', label: 'Edit links' },
 ];
 
 export function SiteHeader({ variant = 'light' }: { variant?: 'light' | 'dark' }) {
