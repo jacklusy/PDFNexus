@@ -67,9 +67,11 @@ export default function PrivacyPage() {
             Verified final files
           </h2>
           <p>
-            After email OTP verification, the final PDF or DOCX you generate may
-            be stored temporarily for download and email delivery, then expire
-            per retention policy.
+            Local tool outputs download immediately from your browser and are not
+            uploaded unless you choose optional email delivery. If you opt in,
+            after email OTP verification the final PDF or DOCX may be stored
+            temporarily for download and email delivery, then expire per retention
+            policy.
           </p>
         </section>
         <section id="cookies" className="pt-4">

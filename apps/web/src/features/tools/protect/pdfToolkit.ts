@@ -1,0 +1,40 @@
+/**
+ * Lazy pdfstudio (qpdf.wasm) loader. Passwords are never logged.
+ */
+
+let toolkitPromise: Promise<
+  import('pdfstudio').PdfToolkit
+> | null = null;
+
+export async function getPdfToolkit() {
+  if (!toolkitPromise) {
+    toolkitPromise = (async () => {
+      const { createPdfToolkit } = await import('pdfstudio');
+      return createPdfToolkit({
+        wasmUrl: '/qpdf.wasm',
+      });
+    })();
+  }
+  return toolkitPromise;
+}
+
+export function clearPassword(value: string): void {
+  // Best-effort: overwrite string refs are not possible in JS; callers
+  // should drop references after use. This helper exists for call-site clarity.
+  void value;
+}
+
+export function passwordStrength(password: string): {
+  score: 0 | 1 | 2 | 3 | 4;
+  label: string;
+} {
+  if (!password) return { score: 0, label: 'Enter a password' };
+  let score = 0 as 0 | 1 | 2 | 3 | 4;
+  if (password.length >= 8) score = 1;
+  if (password.length >= 12) score = 2;
+  if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score = Math.max(score, 2) as 0 | 1 | 2 | 3 | 4;
+  if (/\d/.test(password)) score = Math.min(4, score + 1) as 0 | 1 | 2 | 3 | 4;
+  if (/[^A-Za-z0-9]/.test(password)) score = Math.min(4, score + 1) as 0 | 1 | 2 | 3 | 4;
+  const labels = ['Very weak', 'Weak', 'Fair', 'Good', 'Strong'] as const;
+  return { score, label: labels[score] };
+}

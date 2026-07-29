@@ -39,7 +39,11 @@ import { compileMergedPdf, MERGE_OUTPUT_NAME, PreviewOrderModal } from '@/featur
 import {
   EmailVerifyModal,
   useDownloadGate,
+  createLocalExport,
+  downloadBlobLocally,
+  revokeLocalUrl,
   type GatedDownloadResult,
+  type LocalExportResult,
 } from '@/features/files';
 import type { UploadProgress } from '@/features/files';
 import {
@@ -58,9 +62,12 @@ const ConvertToWordModal = dynamic(
 
 const MERGE_STEPS: TransferStageStep[] = [
   { key: 'processing', label: 'Compiling pages' },
-  { key: 'preparing', label: 'Preparing upload' },
-  { key: 'uploading', label: 'Uploading' },
-  { key: 'finalizing', label: 'Finalizing' },
+  { key: 'completed', label: 'Ready locally' },
+];
+
+const CONVERT_STEPS: TransferStageStep[] = [
+  { key: 'processing', label: 'Converting' },
+  { key: 'completed', label: 'Ready locally' },
 ];
 
 const UPLOAD_STEPS: TransferStageStep[] = [
@@ -146,6 +153,8 @@ export default function WorkspaceApp() {
     kind: FileKind;
   } | null>(null);
   const [retryTransfer, setRetryTransfer] = useState<(() => void) | null>(null);
+  const [localExport, setLocalExport] = useState<LocalExportResult | null>(null);
+  const [emailingCopy, setEmailingCopy] = useState(false);
 
   const transfer = useTransferOperation();
   const verifyOpenRef = useRef(verifyOpen);
@@ -240,7 +249,37 @@ export default function WorkspaceApp() {
     clearResult();
     setTransferFile(null);
     setRetryTransfer(null);
+    setEmailingCopy(false);
+    setLocalExport((prev) => {
+      if (prev?.localBlobUrl) revokeLocalUrl(prev.localBlobUrl);
+      return null;
+    });
   }, [transfer, clearResult]);
+
+  const finishLocalExport = useCallback(
+    (
+      blob: Blob,
+      fileName: string,
+      kind: LocalExportResult['kind'],
+      pageCount?: number
+    ) => {
+      const exported = createLocalExport(blob, fileName, kind, pageCount);
+      setLocalExport((prev) => {
+        if (prev?.localBlobUrl) revokeLocalUrl(prev.localBlobUrl);
+        return exported;
+      });
+      downloadBlobLocally(blob, fileName);
+      trackEvent(kind === 'docx' ? 'convert' : 'merge', {
+        tool: kind === 'docx' ? 'pdf-to-word' : 'merge',
+      });
+      transfer.succeed({
+        stageLabel: 'Downloaded to your device',
+        percent: 100,
+        totalBytes: blob.size,
+      });
+    },
+    [transfer]
+  );
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -679,6 +718,7 @@ export default function WorkspaceApp() {
     const total = currentPages.length;
     setTransferFile({ name: MERGE_OUTPUT_NAME, kind: 'merged_pdf' });
     setRetryTransfer(() => () => void handleMergeAndCompile());
+    setEmailingCopy(false);
     transfer.begin({
       phase: 'processing',
       stageLabel: `Compiling pages 0 / ${total}`,
@@ -703,26 +743,95 @@ export default function WorkspaceApp() {
           });
         }
       );
-      transfer.update({
-        phase: 'preparing',
-        stageLabel: 'Preparing secure upload…',
-        percent: null,
-        canCancel: true,
-        unitsDone: undefined,
-        unitsTotal: undefined,
+      finishLocalExport(blob, MERGE_OUTPUT_NAME, 'pdf', total);
+    } catch (err) {
+      handleTransferError(err);
+    }
+  }, [transfer, finishLocalExport, handleTransferError]);
+
+  const handleExtractSelected = useCallback(async () => {
+    const selected = selectedPageIdsRef.current;
+    const currentPages = pagesRef.current.filter((p) => selected.has(p.id));
+    const currentStore = fileStoreRef.current;
+    if (currentPages.length === 0) return;
+    const outName = 'extracted-pages.pdf';
+    const total = currentPages.length;
+    setTransferFile({ name: outName, kind: 'merged_pdf' });
+    setRetryTransfer(() => () => void handleExtractSelected());
+    setEmailingCopy(false);
+    transfer.begin({
+      phase: 'processing',
+      stageLabel: `Extracting pages 0 / ${total}`,
+      percent: 0,
+      unitsTotal: total,
+      unitsDone: 0,
+      unitLabel: 'Pages',
+      canCancel: false,
+    });
+    try {
+      const { blob } = await compileMergedPdf(
+        currentPages,
+        currentStore,
+        (current, t) => {
+          transfer.update({
+            phase: 'processing',
+            stageLabel: `Extracting pages ${current} / ${t}`,
+            percent: t ? Math.round((current / t) * 100) : null,
+            unitsDone: current,
+            unitsTotal: t,
+            unitLabel: 'Pages',
+          });
+        }
+      );
+      finishLocalExport(blob, outName, 'pdf', total);
+    } catch (err) {
+      handleTransferError(err);
+    }
+  }, [transfer, finishLocalExport, handleTransferError]);
+
+  const handleWordGatedDownload = useCallback(
+    async (blob: Blob, fileName: string) => {
+      setTransferFile({ name: fileName, kind: 'docx' });
+      setRetryTransfer(null);
+      setEmailingCopy(false);
+      transfer.begin({
+        phase: 'processing',
+        stageLabel: 'Finalizing Word document…',
+        percent: 100,
+        canCancel: false,
       });
-      transfer.setCancelHandler(cancelUpload);
+      try {
+        finishLocalExport(blob, fileName, 'docx');
+      } catch (err) {
+        handleTransferError(err);
+      }
+    },
+    [transfer, finishLocalExport, handleTransferError]
+  );
+
+  const handleEmailCopy = useCallback(async () => {
+    if (!localExport) return;
+    setEmailingCopy(true);
+    transfer.update({
+      phase: 'preparing',
+      stageLabel: 'Preparing optional email delivery…',
+      percent: null,
+      canCancel: true,
+    });
+    transfer.setCancelHandler(cancelUpload);
+    try {
       const gated = await gateDownload({
-        blob,
-        fileName: MERGE_OUTPUT_NAME,
-        kind: 'merged_pdf',
-        pageCount: total,
+        blob: localExport.blob,
+        fileName: localExport.fileName,
+        kind: localExport.kind === 'docx' ? 'docx' : 'merged_pdf',
+        pageCount: localExport.pageCount,
       });
       finishTransferSuccess(gated);
     } catch (err) {
       handleTransferError(err);
     }
   }, [
+    localExport,
     transfer,
     cancelUpload,
     gateDownload,
@@ -730,45 +839,32 @@ export default function WorkspaceApp() {
     handleTransferError,
   ]);
 
-  const handleWordGatedDownload = useCallback(
-    async (blob: Blob, fileName: string) => {
-      setTransferFile({ name: fileName, kind: 'docx' });
-      setRetryTransfer(null);
-      transfer.begin({
-        phase: 'preparing',
-        stageLabel: 'Preparing secure upload…',
-        percent: null,
-        canCancel: true,
-      });
-      transfer.setCancelHandler(cancelUpload);
-      try {
-        const gated = await gateDownload({ blob, fileName, kind: 'docx' });
-        finishTransferSuccess(gated);
-      } catch (err) {
-        handleTransferError(err);
-      }
-    },
-    [transfer, cancelUpload, gateDownload, finishTransferSuccess, handleTransferError]
-  );
+  const handleLocalDownloadAgain = useCallback(() => {
+    if (!localExport) return;
+    downloadBlobLocally(localExport.blob, localExport.fileName);
+  }, [localExport]);
+
+  const handleTransferOpen = useCallback(() => {
+    const url = localExport?.localBlobUrl || gatedResult?.localBlobUrl;
+    if (url) window.open(url, '_blank', 'noopener');
+  }, [localExport, gatedResult]);
 
   const handleSubmitVerifyEmail = useCallback(
     async (email: string) => {
       transfer.update({
         phase: 'preparing',
-        stageLabel: 'Preparing secure upload…',
+        stageLabel: 'Preparing optional email delivery…',
         canCancel: true,
       });
       transfer.setCancelHandler(cancelUpload);
       await submitEmailForDownload(email);
+      transfer.succeed({
+        stageLabel: 'Sent to your email',
+        percent: 100,
+      });
     },
     [transfer, cancelUpload, submitEmailForDownload]
   );
-
-  const handleTransferOpen = useCallback(() => {
-    if (gatedResult?.localBlobUrl) {
-      window.open(gatedResult.localBlobUrl, '_blank', 'noopener');
-    }
-  }, [gatedResult]);
 
   const handleTriggerUpload = () => fileInputRef.current?.click();
 
@@ -1064,6 +1160,7 @@ export default function WorkspaceApp() {
         onSelectAll={handleSelectAll}
         onMoveSelectedTo={handleMoveSelectedTo}
         onConvertToWord={() => setIsConvertToWordOpen(true)}
+        onExtractSelected={() => void handleExtractSelected()}
       />
 
       <ConvertToWordModal
@@ -1090,9 +1187,24 @@ export default function WorkspaceApp() {
       <TransferProgressModal
         open={transfer.state.phase !== 'idle' && !verifyOpen}
         state={transfer.state}
-        fileName={transferFile?.name ?? gatedResult?.fileName ?? 'Your file'}
-        fileKind={transferFile?.kind === 'docx' ? 'Word' : 'PDF'}
-        steps={transferFile?.kind === 'docx' ? UPLOAD_STEPS : MERGE_STEPS}
+        fileName={
+          transferFile?.name ??
+          localExport?.fileName ??
+          gatedResult?.fileName ??
+          'Your file'
+        }
+        fileKind={
+          transferFile?.kind === 'docx' || localExport?.kind === 'docx'
+            ? 'Word'
+            : 'PDF'
+        }
+        steps={
+          emailingCopy
+            ? UPLOAD_STEPS
+            : transferFile?.kind === 'docx'
+              ? CONVERT_STEPS
+              : MERGE_STEPS
+        }
         activeStepKey={
           transfer.state.phase === 'cancelling' ? undefined : transfer.state.phase
         }
@@ -1101,12 +1213,25 @@ export default function WorkspaceApp() {
             ? 'Check your email — click “Download your file” in the message to finish.'
             : gatedResult?.emailQueued
               ? 'A copy was also sent to your verified email.'
-              : null
+              : localExport && !emailingCopy
+                ? 'File is ready on your device. Email delivery is optional.'
+                : null
         }
         onCancel={() => transfer.requestCancel()}
         onClose={closeTransfer}
-        onDownload={gatedResult?.awaitingEmailLink ? undefined : downloadNow}
+        onDownload={
+          gatedResult?.awaitingEmailLink
+            ? undefined
+            : localExport
+              ? handleLocalDownloadAgain
+              : downloadNow
+        }
         onOpen={gatedResult?.awaitingEmailLink ? undefined : handleTransferOpen}
+        onEmailCopy={
+          localExport && !gatedResult?.awaitingEmailLink && !emailingCopy
+            ? () => void handleEmailCopy()
+            : undefined
+        }
         onRetry={retryTransfer ?? undefined}
         downloadDisabled={Boolean(gatedResult?.awaitingEmailLink)}
       />

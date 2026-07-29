@@ -8,7 +8,15 @@ export {
   verifyOtp,
   mimeTypeForKind,
   triggerBrowserDownload,
+  resolveDownloadTarget,
 } from './api';
+export {
+  downloadBlobLocally,
+  openBlobLocally,
+  revokeLocalUrl,
+  createLocalExport,
+} from './localDownload';
+export type { LocalExportResult } from './localDownload';
 export { uploadFileDirect, UploadCancelledError } from './multipartUpload';
 export type {
   DirectUploadHandle,

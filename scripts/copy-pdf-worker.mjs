@@ -19,3 +19,12 @@ const dest = path.join(destDir, 'pdf.worker.min.mjs');
 fs.mkdirSync(destDir, { recursive: true });
 fs.copyFileSync(src, dest);
 console.log(`[copy-pdf-worker] ${path.relative(root, dest)}`);
+
+try {
+  const wasmSrc = require.resolve('pdfstudio/qpdf.wasm');
+  const wasmDest = path.join(destDir, 'qpdf.wasm');
+  fs.copyFileSync(wasmSrc, wasmDest);
+  console.log(`[copy-pdf-worker] ${path.relative(root, wasmDest)}`);
+} catch (err) {
+  console.warn('[copy-pdf-worker] qpdf.wasm not copied:', err);
+}

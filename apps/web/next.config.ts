@@ -46,14 +46,17 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  transpilePackages: ['@pdfnexus/shared', 'pdfjs-dist'],
+  transpilePackages: ['@pdfnexus/shared', 'pdfjs-dist', 'pdfstudio'],
   experimental: {
     optimizePackageImports: ['lucide-react'],
   },
   webpack: (config) => {
-    // Allow importing the pdf.js worker as a URL asset
     config.resolve.alias = {
       ...config.resolve.alias,
+    };
+    config.experiments = {
+      ...config.experiments,
+      asyncWebAssembly: true,
     };
     return config;
   },

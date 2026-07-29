@@ -16,7 +16,8 @@ import {
   X, 
   ArrowRightLeft,
   ChevronRight,
-  FileType
+  FileType,
+  Scissors
 } from 'lucide-react';
 
 interface BulkControlsProps {
@@ -29,6 +30,7 @@ interface BulkControlsProps {
   onSelectAll: () => void;
   onMoveSelectedTo: (targetIndex: number) => void;
   onConvertToWord?: () => void;
+  onExtractSelected?: () => void;
 }
 
 export default function BulkControls({
@@ -41,6 +43,7 @@ export default function BulkControls({
   onSelectAll,
   onMoveSelectedTo,
   onConvertToWord,
+  onExtractSelected,
 }: BulkControlsProps) {
   const [showMoveInput, setShowMoveInput] = useState(false);
   const [targetIndexString, setTargetIndexString] = useState('1');
@@ -158,6 +161,18 @@ export default function BulkControls({
               </button>
             )}
           </div>
+
+          {onExtractSelected && (
+            <button
+              id="btn-bulk-extract"
+              onClick={onExtractSelected}
+              title="Extract selected pages to a new PDF (local download)"
+              className="p-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <Scissors className="h-4 w-4" />
+              <span className="hidden sm:inline text-xs font-semibold">Extract</span>
+            </button>
+          )}
 
           {/* Convert Selected to Word */}
           {onConvertToWord && (

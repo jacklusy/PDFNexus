@@ -16,7 +16,7 @@ const toc = [
   { id: 'getting-started', label: 'Getting started' },
   { id: 'merge', label: 'Merge & organize' },
   { id: 'convert', label: 'Convert to Word' },
-  { id: 'download', label: 'Verify & download' },
+  { id: 'download', label: 'Download & optional email' },
   { id: 'troubleshooting', label: 'Troubleshooting' },
   { id: 'faq', label: 'FAQ' },
 ];
@@ -24,7 +24,7 @@ const toc = [
 const faqs = [
   {
     q: 'Can I work offline?',
-    a: 'Editing is local once the app is loaded, but verification and final download require network access.',
+    a: 'Local tools run in your browser after the app loads. Optional OCR and email delivery need network access.',
   },
   {
     q: 'What file types can I add?',
@@ -104,12 +104,12 @@ export default function GuidePage() {
 
         <section id="download" className="pt-6">
           <h2 className="font-display text-xl text-[var(--color-ink)]">
-            Verify & download
+            Download & optional email
           </h2>
           <p>
-            When you download a final PDF or Word file, verify your email with a
-            one-time code. That unlocks temporary storage, a download link, and
-            optional email delivery.
+            Browser-processed PDFs and Word files download immediately to your
+            device — no account required. If you want temporary cloud storage or
+            a branded download email, you can optionally verify your email once.
           </p>
           <WorkflowIllustration step={3} className="mt-4 h-28 w-40" />
         </section>

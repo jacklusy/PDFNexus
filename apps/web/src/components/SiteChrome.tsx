@@ -9,9 +9,26 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 
 const links = [
   { href: '/workspace', label: 'Workspace' },
+  { href: '/split-pdf', label: 'Tools' },
   { href: '/guide', label: 'Guide' },
   { href: '/about', label: 'About' },
   { href: '/feedback', label: 'Feedback' },
+];
+
+const toolLinks = [
+  { href: '/merge-pdf', label: 'Merge PDF' },
+  { href: '/split-pdf', label: 'Split PDF' },
+  { href: '/extract-pdf-pages', label: 'Extract pages' },
+  { href: '/compress-pdf', label: 'Compress PDF' },
+  { href: '/protect-pdf', label: 'Protect PDF' },
+  { href: '/unlock-pdf', label: 'Unlock PDF' },
+  { href: '/sign-pdf', label: 'Sign PDF' },
+  { href: '/edit-pdf', label: 'Edit PDF' },
+  { href: '/watermark-pdf', label: 'Watermark' },
+  { href: '/page-numbers-pdf', label: 'Page numbers' },
+  { href: '/pdf-to-jpg', label: 'PDF to JPG' },
+  { href: '/jpg-to-pdf', label: 'JPG to PDF' },
+  { href: '/rotate-pdf', label: 'Rotate PDF' },
 ];
 
 export function SiteHeader({ variant = 'light' }: { variant?: 'light' | 'dark' }) {
@@ -40,10 +57,14 @@ export function SiteHeader({ variant = 'light' }: { variant?: 'light' | 'dark' }
     };
   }, [open]);
 
-  const linkClass = (href: string) =>
-    cn(
+  const linkClass = (href: string) => {
+    const isTools = href === '/split-pdf';
+    const active = isTools
+      ? toolLinks.some((t) => pathname === t.href)
+      : pathname === href;
+    return cn(
       'rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]',
-      pathname === href
+      active
         ? dark
           ? 'bg-white/15 text-white'
           : 'bg-[var(--color-accent-soft)] text-[var(--color-accent)]'
@@ -51,6 +72,7 @@ export function SiteHeader({ variant = 'light' }: { variant?: 'light' | 'dark' }
           ? 'text-white/75 hover:bg-white/10 hover:text-white'
           : 'text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-ink)]',
     );
+  };
 
   return (
     <header
@@ -77,11 +99,33 @@ export function SiteHeader({ variant = 'light' }: { variant?: 'light' | 'dark' }
       </Link>
 
       <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
-        {links.map((l) => (
-          <Link key={l.href} href={l.href} className={linkClass(l.href)}>
-            {l.label}
-          </Link>
-        ))}
+        {links.map((l) =>
+          l.label === 'Tools' ? (
+            <div key={l.href} className="relative group">
+              <Link href={l.href} className={linkClass(l.href)}>
+                {l.label}
+              </Link>
+              <div className="invisible absolute left-0 top-full z-30 mt-1 w-52 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+                <ul className="max-h-80 space-y-0.5 overflow-auto">
+                  {toolLinks.map((t) => (
+                    <li key={t.href}>
+                      <Link
+                        href={t.href}
+                        className="block rounded-lg px-3 py-1.5 text-sm text-[var(--color-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-ink)]"
+                      >
+                        {t.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : (
+            <Link key={l.href} href={l.href} className={linkClass(l.href)}>
+              {l.label}
+            </Link>
+          )
+        )}
       </nav>
 
       <div className="flex items-center gap-2">
@@ -144,6 +188,18 @@ export function SiteHeader({ variant = 'light' }: { variant?: 'light' | 'dark' }
                   {l.label}
                 </Link>
               ))}
+              <p className="mt-2 px-3 text-xs font-bold uppercase tracking-wide text-[var(--color-muted)]">
+                Tools
+              </p>
+              {toolLinks.map((t) => (
+                <Link
+                  key={t.href}
+                  href={t.href}
+                  className="rounded-lg px-3 py-2 text-sm text-[var(--color-ink)] hover:bg-[var(--color-surface-2)]"
+                >
+                  {t.label}
+                </Link>
+              ))}
               <Link
                 href="/workspace"
                 className="mt-2 rounded-xl bg-[var(--color-accent)] px-3 py-3 text-center text-sm font-bold text-white"
@@ -166,8 +222,8 @@ export function SiteFooter() {
         <div className="sm:col-span-2 lg:col-span-1">
           <p className="font-display text-xl text-[var(--color-ink)]">PDFNexus</p>
           <p className="mt-2 text-sm leading-relaxed text-[var(--color-muted)]">
-            Merge and organize PDFs entirely in your browser. Only final files
-            leave your device after email verification.
+            Local-first PDF tools in your browser. Downloads are immediate;
+            optional email delivery is only when you choose it.
           </p>
         </div>
         <div>
@@ -178,6 +234,11 @@ export function SiteFooter() {
             <li>
               <Link href="/workspace" className="hover:text-[var(--color-accent)]">
                 Workspace
+              </Link>
+            </li>
+            <li>
+              <Link href="/split-pdf" className="hover:text-[var(--color-accent)]">
+                PDF tools
               </Link>
             </li>
             <li>

@@ -45,6 +45,8 @@ export interface TransferProgressModalProps {
   onClose: () => void;
   onDownload?: () => void;
   onOpen?: () => void;
+  /** Optional cloud delivery after a local export succeeds. */
+  onEmailCopy?: () => void;
   onRetry?: () => void;
   downloadDisabled?: boolean;
 }
@@ -104,6 +106,7 @@ export function TransferProgressModal({
   onClose,
   onDownload,
   onOpen,
+  onEmailCopy,
   onRetry,
   downloadDisabled,
 }: TransferProgressModalProps) {
@@ -334,6 +337,9 @@ export function TransferProgressModal({
         {state.phase === 'completed' && (
           <>
             <SecondaryButton onClick={onClose}>Done</SecondaryButton>
+            {onEmailCopy && (
+              <SecondaryButton onClick={onEmailCopy}>Email a copy</SecondaryButton>
+            )}
             {onOpen && (
               <SecondaryButton onClick={onOpen}>
                 <FolderOpen className="h-4 w-4" /> Open

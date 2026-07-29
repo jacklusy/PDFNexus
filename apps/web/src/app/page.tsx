@@ -20,11 +20,11 @@ export const metadata: Metadata = pageMetadata({
 const faqs = [
   {
     q: 'Do my source PDFs get uploaded while I edit?',
-    a: 'No. Merge, reorder, rotate, and Word conversion run in your browser. Source files stay on your device until you choose to download a final file.',
+    a: 'No. Merge, reorder, rotate, and Word conversion run in your browser. Source files stay on your device. Downloads of local results are immediate — no account required.',
   },
   {
-    q: 'Why do you ask for email verification?',
-    a: 'Verification unlocks secure temporary storage, a download link, and optional email delivery for the final PDF or DOCX you generate.',
+    q: 'Why would I verify my email?',
+    a: 'Email verification is optional. Use it only if you want temporary cloud storage or a branded download link emailed to you. Local tools never require it.',
   },
   {
     q: 'Is OCR private?',
@@ -108,8 +108,8 @@ export default function HomePage() {
               ['Merge locally', 'Combine PDFs and images in-browser with full page control.'],
               ['Organize pages', 'Reorder, rotate, duplicate, delete, and insert blanks.'],
               ['Convert to Word', 'Export structured DOCX with optional OCR for scans.'],
-              ['Verified delivery', 'Download or email finals after OTP verification.'],
-              ['No account passwords', 'Email verification for downloads — not a traditional login.'],
+              ['Instant local download', 'Browser-processed files download immediately — no sign-up.'],
+              ['Optional email delivery', 'Verify once only if you want a cloud copy or emailed link.'],
               ['Privacy-minded analytics', 'Feature events without filenames or document content.'],
             ].map(([title, body]) => (
               <div
@@ -144,8 +144,8 @@ export default function HomePage() {
                 },
                 {
                   step: 3 as const,
-                  title: 'Verify & download',
-                  body: 'Verify email once, then download or email the final file.',
+                  title: 'Download instantly',
+                  body: 'Save the result to your device right away. Email a copy only if you want to.',
                 },
               ] as const
             ).map(({ step, title, body }) => (
