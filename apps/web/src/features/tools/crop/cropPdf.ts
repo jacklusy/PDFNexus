@@ -46,6 +46,7 @@ function marginsForPage(
 /**
  * Hard-crop pages by embedding each page into a new page sized to the crop box,
  * so content outside the crop is removed (not just hidden via CropBox).
+ * Margins are applied in the page's visual size (rotation-aware via getSize()).
  */
 export async function cropPdf(options: CropPdfOptions): Promise<Uint8Array> {
   const src = await loadReadablePdf(options.bytes);
@@ -57,8 +58,8 @@ export async function cropPdf(options: CropPdfOptions): Promise<Uint8Array> {
     const pageNum = i + 1;
     const srcPage = src.getPage(i);
     const media = srcPage.getMediaBox();
-    const mediaW = media.width;
-    const mediaH = media.height;
+    const visual = srcPage.getSize();
+    const rotation = ((srcPage.getRotation().angle % 360) + 360) % 360;
 
     if (!selected.has(pageNum)) {
       const [copied] = await out.copyPages(src, [i]);
@@ -66,8 +67,20 @@ export async function cropPdf(options: CropPdfOptions): Promise<Uint8Array> {
       continue;
     }
 
-    const margins = marginsForPage(pageNum, options);
-    // Crop rect relative to media box; convert to absolute page coords
+    let margins = marginsForPage(pageNum, options);
+    // Map visual margins into media-box space when page is rotated 90/270
+    if (rotation === 90 || rotation === 270) {
+      margins = {
+        left: margins.bottom,
+        right: margins.top,
+        top: margins.left,
+        bottom: margins.right,
+      };
+    }
+
+    const mediaW = media.width;
+    const mediaH = media.height;
+    void visual;
     const relative = marginsToCropBox(mediaW, mediaH, margins);
     const crop: CropRect = {
       x: media.x + relative.x,
@@ -76,7 +89,6 @@ export async function cropPdf(options: CropPdfOptions): Promise<Uint8Array> {
       h: relative.h,
     };
 
-    // Hard crop: embed only the crop region into a page sized to the crop box
     const embedded = await out.embedPage(srcPage, {
       left: crop.x,
       bottom: crop.y,

@@ -10,6 +10,8 @@ export interface FlattenPdfResult {
   formsFlattened: boolean;
   annotationsFlattened: boolean;
   warning: string;
+  /** Set when annotation flatten was attempted but failed. */
+  annotationError?: string;
 }
 
 /**
@@ -17,7 +19,6 @@ export interface FlattenPdfResult {
  * Encrypted inputs are refused via loadReadablePdf / assertPdfReadable.
  */
 export async function flattenPdf(bytes: ArrayBuffer): Promise<FlattenPdfResult> {
-  // Form path — loadReadablePdf refuses encrypted docs
   const doc = await loadReadablePdf(bytes);
   let formsFlattened = false;
   try {
@@ -31,8 +32,8 @@ export async function flattenPdf(bytes: ArrayBuffer): Promise<FlattenPdfResult> 
   }
   let working = await doc.save();
 
-  // Annotation flatten via qpdf.wasm (assert readable first)
   let annotationsFlattened = false;
+  let annotationError: string | undefined;
   try {
     const ab = working.buffer.slice(
       working.byteOffset,
@@ -42,8 +43,9 @@ export async function flattenPdf(bytes: ArrayBuffer): Promise<FlattenPdfResult> 
     const toolkit = await getPdfToolkit();
     working = await toolkit.flatten(working, { annotations: 'all' });
     annotationsFlattened = true;
-  } catch {
-    // WASM missing or flatten failed — keep pdf-lib result
+  } catch (err) {
+    annotationError =
+      err instanceof Error ? err.message : 'Annotation flatten failed';
   }
 
   return {
@@ -51,5 +53,6 @@ export async function flattenPdf(bytes: ArrayBuffer): Promise<FlattenPdfResult> 
     formsFlattened,
     annotationsFlattened,
     warning: FLATTEN_WARNING,
+    annotationError,
   };
 }

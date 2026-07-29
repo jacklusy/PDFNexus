@@ -1030,6 +1030,34 @@ export default function WorkspaceApp() {
                       <ListTodo className="h-3.5 w-3.5 text-teal-700" />
                       Batch queue
                     </DropdownItem>
+                    <DropdownItem
+                      onClick={() => {
+                        window.location.href = '/pdf-to-excel';
+                      }}
+                    >
+                      PDF to Excel
+                    </DropdownItem>
+                    <DropdownItem
+                      onClick={() => {
+                        window.location.href = '/pdf-to-pptx';
+                      }}
+                    >
+                      PDF to PPTX
+                    </DropdownItem>
+                    <DropdownItem
+                      onClick={() => {
+                        window.location.href = '/bates-numbering';
+                      }}
+                    >
+                      Bates numbering
+                    </DropdownItem>
+                    <DropdownItem
+                      onClick={() => {
+                        window.location.href = '/redact-pdf';
+                      }}
+                    >
+                      Redact PDF
+                    </DropdownItem>
                     <DropdownItem danger onClick={handleClearAll}>
                       Reset workspace
                     </DropdownItem>
@@ -1182,13 +1210,39 @@ export default function WorkspaceApp() {
         onConvertToWord={() => setIsConvertToWordOpen(true)}
         onExtractSelected={() => void handleExtractSelected()}
         onCropSelected={() => {
-          window.location.href = '/crop-pdf';
+          const sel = pages
+            .map((p, i) => (selectedPageIds.has(p.id) ? i + 1 : null))
+            .filter((n): n is number => n != null);
+          const q =
+            sel.length > 0 && sel.length < pages.length
+              ? `?pages=${sel.join(',')}`
+              : '';
+          window.location.href = `/crop-pdf${q}`;
         }}
         onResizeSelected={() => {
-          window.location.href = '/resize-pdf';
+          const sel = pages
+            .map((p, i) => (selectedPageIds.has(p.id) ? i + 1 : null))
+            .filter((n): n is number => n != null);
+          const q =
+            sel.length > 0 && sel.length < pages.length
+              ? `?pages=${sel.join(',')}`
+              : '';
+          window.location.href = `/resize-pdf${q}`;
         }}
         onFlattenSelected={() => {
           window.location.href = '/flatten-pdf';
+        }}
+        onExcelSelected={() => {
+          window.location.href = '/pdf-to-excel';
+        }}
+        onPptxSelected={() => {
+          window.location.href = '/pdf-to-pptx';
+        }}
+        onBatesSelected={() => {
+          window.location.href = '/bates-numbering';
+        }}
+        onRedactSelected={() => {
+          window.location.href = '/redact-pdf';
         }}
       />
 

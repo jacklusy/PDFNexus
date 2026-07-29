@@ -25,6 +25,16 @@ export interface ToolWorkbenchProps {
   footer?: React.ReactNode;
   className?: string;
   busy?: boolean;
+  /** Badge text next to the title. Default: "Fully local". */
+  badgeLabel?: string;
+  /** Drop-zone primary hint. */
+  dropLabel?: string;
+  /** Drop-zone secondary hint. */
+  dropHint?: string;
+  /** Footer privacy note under the lock icon. */
+  privacyNote?: string;
+  /** Accessible label for the file picker control. */
+  pickerLabel?: string;
 }
 
 function makeToolFile(file: File): ToolFile {
@@ -48,6 +58,11 @@ export function ToolWorkbench({
   footer,
   className,
   busy = false,
+  badgeLabel = 'Fully local',
+  dropLabel = 'Drop a PDF here or click to browse',
+  dropHint = 'Processed in your browser — files stay on this device',
+  privacyNote = 'No upload required for this tool. Optional email delivery is only offered after a local download when you choose it.',
+  pickerLabel = 'Choose PDF file',
 }: ToolWorkbenchProps) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -56,12 +71,20 @@ export function ToolWorkbench({
   const addFiles = useCallback(
     (list: FileList | File[]) => {
       const incoming = Array.from(list).filter((f) => {
+        const lower = f.name.toLowerCase();
+        const acceptParts = accept.split(',').map((a) => a.trim().toLowerCase());
+        const okExt = acceptParts.some((a) => {
+          if (a.startsWith('.')) return lower.endsWith(a);
+          if (a.includes('/')) return false;
+          return lower.endsWith(`.${a.replace('*', '')}`);
+        });
         const okType =
           f.type === 'application/pdf' ||
-          f.name.toLowerCase().endsWith('.pdf') ||
-          accept.includes(f.type) ||
-          accept.split(',').some((a) => f.name.toLowerCase().endsWith(a.trim().replace('*', '')));
-        return okType || accept.includes('image/');
+          lower.endsWith('.pdf') ||
+          (Boolean(f.type) && accept.includes(f.type)) ||
+          okExt ||
+          accept.includes('image/');
+        return okType;
       });
       if (!incoming.length) return;
       if (multiple) {
@@ -96,7 +119,7 @@ export function ToolWorkbench({
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-accent-soft)] px-3 py-1 text-xs font-semibold text-[var(--color-accent)]">
           <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-          Fully local
+          {badgeLabel}
         </span>
       </div>
 
@@ -128,15 +151,11 @@ export function ToolWorkbench({
         role="button"
         tabIndex={0}
         aria-controls={inputId}
-        aria-label="Choose PDF file"
+        aria-label={pickerLabel}
       >
         <FileUp className="h-8 w-8 text-[var(--color-accent)]" aria-hidden />
-        <p className="mt-2 text-sm font-medium text-[var(--color-ink)]">
-          Drop a PDF here or click to browse
-        </p>
-        <p className="mt-1 text-xs text-[var(--color-muted)]">
-          Processed in your browser — files stay on this device
-        </p>
+        <p className="mt-2 text-sm font-medium text-[var(--color-ink)]">{dropLabel}</p>
+        <p className="mt-1 text-xs text-[var(--color-muted)]">{dropHint}</p>
         <input
           ref={inputRef}
           id={inputId}
@@ -184,8 +203,7 @@ export function ToolWorkbench({
 
       <p className="mt-4 flex items-start gap-2 text-xs text-[var(--color-muted)]">
         <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-        No upload required for this tool. Optional email delivery is only offered after a local
-        download when you choose it.
+        {privacyNote}
       </p>
 
       {footer ? <div className="mt-4 flex flex-wrap gap-2">{footer}</div> : null}

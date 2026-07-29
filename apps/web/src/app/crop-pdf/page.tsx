@@ -6,7 +6,7 @@ import { CropTool } from '@/features/tools/crop/CropTool';
 export const metadata: Metadata = pageMetadata({
   title: 'Crop PDF Online — Trim PDF Page Margins Free',
   description:
-    'Crop PDF pages by setting margins or presets. Preview the crop box, apply to all or selected pages, and download — processed locally in your browser.',
+    'Hard-crop PDF pages by removing content outside your margins. Preview the crop box, apply to all or selected pages, and download — processed locally.',
   path: '/crop-pdf',
 });
 
@@ -14,23 +14,24 @@ export default function Page() {
   return (
     <ToolPageShell
       title="Crop PDF"
-      description="Trim page margins with presets or custom values. Preview the crop rectangle, apply to all pages or a range, then download the cropped PDF."
+      description="Hard-crop page margins with presets or custom values. Content outside the crop is removed from the exported PDF (not just hidden)."
       path="/crop-pdf"
       howItWorks={[
         'Upload the PDF you want to crop.',
         'Adjust margins with presets or custom values and preview the crop box on the active page.',
-        'Choose all pages or a page range, then download the cropped PDF.',
+        'Choose all pages or a page range, then download the hard-cropped PDF.',
       ]}
       privacyNote="This tool runs in your browser. Your file is not uploaded to process it."
       limits={[
-        'Cropping updates CropBox / MediaBox geometry; content outside the box may still exist until hard-cropped by a viewer.',
+        'Hard crop permanently removes content outside the crop rectangle from the exported file.',
+        'To undo, re-upload your original PDF — restore only resets margins before export.',
         'Large files are limited by available browser memory.',
       ]}
       faqs={[
         {
           question: 'Does crop permanently delete content?',
           answer:
-            'This tool sets page crop geometry. Some viewers still allow viewing beyond CropBox unless content is flattened or re-exported.',
+            'Yes. Export rebuilds each page so only the cropped region remains. Keep a copy of the original if you may need the full page later.',
         },
         {
           question: 'Can I crop only some pages?',

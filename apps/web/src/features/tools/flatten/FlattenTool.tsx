@@ -33,11 +33,18 @@ export function FlattenTool() {
         result.formsFlattened ? 'forms' : null,
         result.annotationsFlattened ? 'annotations' : null,
       ].filter(Boolean);
-      setProgress(
-        parts.length
-          ? `Downloaded (flattened: ${parts.join(' + ')})`
-          : 'Downloaded (no forms found; annotation pass attempted)'
-      );
+      let status = parts.length
+        ? `Downloaded (flattened: ${parts.join(' + ')})`
+        : 'Downloaded (no form fields found)';
+      if (result.annotationError) {
+        status += `. Annotation flatten failed: ${result.annotationError}`;
+      }
+      setProgress(status);
+      if (result.annotationError && !result.annotationsFlattened) {
+        setError(
+          `Forms may be flattened, but annotations were not: ${result.annotationError}`
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setProgress(null);

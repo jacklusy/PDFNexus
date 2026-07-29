@@ -4,6 +4,7 @@ import {
   PDFString,
   type PDFPage,
 } from 'pdf-lib';
+import { assertAllowedLinkUri } from './linkUri';
 
 export interface LinkAnnotationRect {
   x: number;
@@ -22,14 +23,11 @@ export function addLinkAnnotation(
   doc: PDFDocument,
   opts: LinkAnnotationRect
 ): void {
-  const { x, y, width, height, uri } = opts;
+  const { x, y, width, height } = opts;
   if (!(width > 0) || !(height > 0)) {
     throw new Error('Link annotation requires positive width and height.');
   }
-  const trimmed = uri.trim();
-  if (!trimmed) {
-    throw new Error('Link annotation requires a URI.');
-  }
+  const trimmed = assertAllowedLinkUri(opts.uri);
 
   const context = doc.context;
   const actionDict = context.obj({
@@ -45,7 +43,6 @@ export function addLinkAnnotation(
     C: [0, 0, 1],
     A: actionDict,
   });
-  // Ensure Subtype/Type are names (obj() usually handles string → PDFName)
   annotDict.set(PDFName.of('Type'), PDFName.of('Annot'));
   annotDict.set(PDFName.of('Subtype'), PDFName.of('Link'));
 

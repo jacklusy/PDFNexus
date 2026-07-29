@@ -13,6 +13,7 @@ import { MailModule } from './mail/mail.module';
 import { JobsModule } from './jobs/jobs.module';
 import { StorageModule } from './storage/storage.module';
 import { OcrModule } from './ocr/ocr.module';
+import { ConversionsModule } from './conversions/conversions.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { AdminModule } from './admin/admin.module';
@@ -50,6 +51,7 @@ import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
     AuthEmailModule,
     FilesModule,
     OcrModule,
+    ConversionsModule,
     AnalyticsModule,
     FeedbackModule,
     AdminModule,

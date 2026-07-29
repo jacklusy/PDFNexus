@@ -1,19 +1,21 @@
 'use client';
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Download, RotateCcw, Trash2, ListTodo, X } from 'lucide-react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { zipOutputs } from '@/features/tools/zipOutputs';
 import { cropPdf } from '@/features/tools/crop/cropPdf';
 import { resizePdf } from '@/features/tools/resize/resizePdf';
-import { flattenPdf } from '@/features/tools/flatten/flattenPdf';
+import { flattenPdf, FLATTEN_WARNING } from '@/features/tools/flatten/flattenPdf';
 import { compressPdf, settingsForPreset } from '@/features/tools/compress/compressPdf';
-import { PAPER_SIZES_PT } from '@/features/tools/pageGeometry';
-import { cropPresetMargins } from '@/features/tools/pageGeometry';
+import { PAPER_SIZES_PT, cropPresetMargins } from '@/features/tools/pageGeometry';
 import {
   clearProject,
   saveProject,
+  saveFileBlob,
+  loadFileBlob,
+  loadProject,
   ProjectStoreQuotaWarning,
 } from './projectStore';
 import {
@@ -28,6 +30,8 @@ import {
   type BatchRunner,
   type BatchTool,
 } from './batchQueue';
+
+const PROJECT_ID = 'workspace-batch';
 
 const TOOL_LABELS: Record<BatchTool, string> = {
   crop: 'Crop',
@@ -61,6 +65,9 @@ function defaultRunners(): Partial<Record<BatchTool, BatchRunner>> {
       if (!job.inputBlob) throw new Error('Missing input file.');
       const bytes = await job.inputBlob.arrayBuffer();
       const result = await flattenPdf(bytes);
+      if (result.annotationError && !result.annotationsFlattened && !result.formsFlattened) {
+        throw new Error(result.annotationError);
+      }
       return new Blob([result.bytes], { type: 'application/pdf' });
     },
     async compress(job) {
@@ -99,6 +106,8 @@ export function BatchQueuePanel({ open, onClose }: BatchQueuePanelProps) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [flattenConfirmed, setFlattenConfirmed] = useState(false);
+  const [restored, setRestored] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const runners = useMemo(() => defaultRunners(), []);
 
@@ -107,18 +116,82 @@ export function BatchQueuePanel({ open, onClose }: BatchQueuePanelProps) {
   const persistSession = useCallback(async (q: BatchQueue) => {
     try {
       await saveProject({
-        id: 'workspace-batch',
+        id: PROJECT_ID,
         name: 'Workspace batch',
         settings: {
-          jobCount: q.jobs.length,
-          tools: q.jobs.map((j) => j.tool),
+          jobs: q.jobs.map((j) => ({
+            id: j.id,
+            tool: j.tool,
+            status: j.status,
+            fileName: j.fileName,
+            error: j.error,
+          })),
         },
         updatedAt: Date.now(),
       });
-    } catch {
+      for (const job of q.jobs) {
+        if (job.inputBlob) {
+          await saveFileBlob(`${PROJECT_ID}:in:${job.id}`, job.inputBlob, PROJECT_ID);
+        }
+        if (job.resultBlob) {
+          await saveFileBlob(`${PROJECT_ID}:out:${job.id}`, job.resultBlob, PROJECT_ID);
+        }
+      }
+    } catch (e) {
+      if (e instanceof ProjectStoreQuotaWarning) throw e;
       // IndexedDB optional in private mode
     }
   }, []);
+
+  useEffect(() => {
+    if (!open || restored) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const project = await loadProject(PROJECT_ID);
+        const saved = project?.settings?.jobs as
+          | Array<{
+              id: string;
+              tool: BatchTool;
+              status: BatchJob['status'];
+              fileName: string;
+              error?: string;
+            }>
+          | undefined;
+        if (!saved?.length || cancelled) {
+          setRestored(true);
+          return;
+        }
+        const restoredJobs: BatchJob[] = [];
+        for (const meta of saved) {
+          const inputBlob =
+            (await loadFileBlob(`${PROJECT_ID}:in:${meta.id}`)) ?? undefined;
+          const resultBlob =
+            (await loadFileBlob(`${PROJECT_ID}:out:${meta.id}`)) ?? undefined;
+          restoredJobs.push({
+            id: meta.id,
+            tool: meta.tool,
+            status: meta.status === 'running' ? 'pending' : meta.status,
+            fileName: meta.fileName,
+            error: meta.error,
+            inputBlob,
+            resultBlob,
+          });
+        }
+        if (!cancelled) {
+          setQueue({ jobs: restoredJobs });
+          setMessage(`Restored ${restoredJobs.length} job(s) from last session.`);
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setRestored(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, restored]);
 
   const onFilesPicked = async (list: FileList | null) => {
     if (!list?.length) return;
@@ -134,12 +207,23 @@ export function BatchQueuePanel({ open, onClose }: BatchQueuePanelProps) {
       });
     }
     setQueue(next);
-    await persistSession(next);
+    try {
+      await persistSession(next);
+    } catch (e) {
+      if (e instanceof ProjectStoreQuotaWarning) setError(e.message);
+    }
     setMessage(`Queued ${list.length} ${TOOL_LABELS[tool]} job(s).`);
   };
 
   const runPending = async () => {
     if (busy) return;
+    const hasFlatten = queue.jobs.some(
+      (j) => j.status === 'pending' && j.tool === 'flatten'
+    );
+    if (hasFlatten && !flattenConfirmed) {
+      setError('Confirm the flatten warning before running flatten jobs.');
+      return;
+    }
     setBusy(true);
     setError(null);
     setMessage('Running batch…');
@@ -202,13 +286,10 @@ export function BatchQueuePanel({ open, onClose }: BatchQueuePanelProps) {
     try {
       await clearProject();
       setQueue(createQueue());
+      setFlattenConfirmed(false);
       setMessage('Project storage cleared.');
     } catch (e) {
-      if (e instanceof ProjectStoreQuotaWarning) {
-        setError(e.message);
-      } else {
-        setError(e instanceof Error ? e.message : String(e));
-      }
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -293,6 +374,21 @@ export function BatchQueuePanel({ open, onClose }: BatchQueuePanelProps) {
               )}
             </Button>
           </div>
+
+          {jobs.some((j) => j.tool === 'flatten') ? (
+            <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-slate-700">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={flattenConfirmed}
+                onChange={(e) => setFlattenConfirmed(e.target.checked)}
+                disabled={busy}
+              />
+              <span>
+                <strong>Flatten warning:</strong> {FLATTEN_WARNING}
+              </span>
+            </label>
+          ) : null}
 
           <ul className="space-y-2" aria-live="polite">
             {jobs.length === 0 ? (

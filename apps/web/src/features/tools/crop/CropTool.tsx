@@ -36,6 +36,16 @@ export function CropTool() {
   const file = files[0]?.file;
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const pages = params.get('pages');
+    if (pages?.trim()) {
+      setPageMode('selected');
+      setRangeText(pages.trim());
+    }
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       if (!file) {

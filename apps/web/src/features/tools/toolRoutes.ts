@@ -26,9 +26,23 @@ export const PHASE2_TOOL_ROUTES = [
 
 export type Phase2ToolRoute = (typeof PHASE2_TOOL_ROUTES)[number];
 
+export const PHASE3_TOOL_ROUTES = [
+  '/pdf-to-excel',
+  '/pdf-to-pptx',
+  '/bates-numbering',
+  '/create-pdf-form',
+  '/redact-pdf',
+  '/pdf-to-html',
+  '/office-to-pdf',
+  '/cert-sign-pdf',
+] as const;
+
+export type Phase3ToolRoute = (typeof PHASE3_TOOL_ROUTES)[number];
+
 export const TOOL_ROUTES = [
   ...PHASE1_TOOL_ROUTES,
   ...PHASE2_TOOL_ROUTES,
+  ...PHASE3_TOOL_ROUTES,
 ] as const;
 
 export type ToolRoute = (typeof TOOL_ROUTES)[number];
@@ -42,4 +56,7 @@ export const TOOL_NAV = [
   { href: '/pdf-to-jpg', label: 'PDF → JPG' },
   { href: '/crop-pdf', label: 'Crop' },
   { href: '/annotate-pdf', label: 'Annotate' },
+  { href: '/pdf-to-excel', label: 'PDF → Excel' },
+  { href: '/office-to-pdf', label: 'Office → PDF' },
+  { href: '/redact-pdf', label: 'Redact' },
 ] as const;

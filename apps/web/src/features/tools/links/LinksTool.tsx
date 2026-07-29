@@ -7,6 +7,7 @@ import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { flattenOverlays } from '../overlays/flattenOverlays';
 import { createId, type LinkOverlay, type OverlayItem } from '../overlays/types';
+import { assertAllowedLinkUri, isAllowedLinkUri } from '../overlays/linkUri';
 
 export function LinksTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
@@ -60,6 +61,10 @@ export function LinksTool() {
       setError('URI is required.');
       return;
     }
+    if (!isAllowedLinkUri(trimmed)) {
+      setError('URI must use http:, https:, or mailto: only.');
+      return;
+    }
     if (pageCount > 0 && (page < 1 || page > pageCount)) {
       setError(`Page must be between 1 and ${pageCount}.`);
       return;
@@ -78,16 +83,21 @@ export function LinksTool() {
       height,
       rotation: 0,
       opacity: 1,
-      uri: trimmed,
+      uri: assertAllowedLinkUri(trimmed),
     };
     setOverlays((prev) => [...prev, item]);
     setError(null);
   };
 
   const updateLink = (id: string, patch: Partial<LinkOverlay>) => {
+    if (patch.uri != null && !isAllowedLinkUri(patch.uri)) {
+      setError('URI must use http:, https:, or mailto: only.');
+      return;
+    }
     setOverlays((prev) =>
       prev.map((l) => (l.id === id ? { ...l, ...patch } : l))
     );
+    setError(null);
   };
 
   const removeLink = (id: string) => {

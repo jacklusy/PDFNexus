@@ -34,6 +34,10 @@ interface BulkControlsProps {
   onCropSelected?: () => void;
   onResizeSelected?: () => void;
   onFlattenSelected?: () => void;
+  onExcelSelected?: () => void;
+  onPptxSelected?: () => void;
+  onBatesSelected?: () => void;
+  onRedactSelected?: () => void;
 }
 
 export default function BulkControls({
@@ -50,6 +54,10 @@ export default function BulkControls({
   onCropSelected,
   onResizeSelected,
   onFlattenSelected,
+  onExcelSelected,
+  onPptxSelected,
+  onBatesSelected,
+  onRedactSelected,
 }: BulkControlsProps) {
   const [showMoveInput, setShowMoveInput] = useState(false);
   const [targetIndexString, setTargetIndexString] = useState('1');
@@ -211,6 +219,50 @@ export default function BulkControls({
               className="p-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
             >
               <span className="text-xs font-semibold">Flatten</span>
+            </button>
+          )}
+
+          {onExcelSelected && (
+            <button
+              id="btn-bulk-excel"
+              onClick={onExcelSelected}
+              title="Open PDF to Excel"
+              className="p-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span className="text-xs font-semibold">Excel</span>
+            </button>
+          )}
+
+          {onPptxSelected && (
+            <button
+              id="btn-bulk-pptx"
+              onClick={onPptxSelected}
+              title="Open PDF to PowerPoint"
+              className="p-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span className="text-xs font-semibold">PPTX</span>
+            </button>
+          )}
+
+          {onBatesSelected && (
+            <button
+              id="btn-bulk-bates"
+              onClick={onBatesSelected}
+              title="Open Bates numbering"
+              className="p-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span className="text-xs font-semibold">Bates</span>
+            </button>
+          )}
+
+          {onRedactSelected && (
+            <button
+              id="btn-bulk-redact"
+              onClick={onRedactSelected}
+              title="Open permanent Redact PDF"
+              className="p-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span className="text-xs font-semibold">Redact</span>
             </button>
           )}
 

@@ -33,6 +33,7 @@ const envSchema = z.object({
   FILE_TTL_DAYS: z.coerce.number().int().positive().default(7),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(524_288_000),
   DOWNLOAD_TOKEN_TTL_HOURS: z.coerce.number().int().positive().default(24),
+  GOTENBERG_URL: z.string().url().default('http://localhost:3001'),
   GEMINI_API_KEY: z.string().optional().default(''),
   OCR_BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(6_291_456),
   OCR_MAX_BASE64_CHARS: z.coerce.number().int().positive().default(5_500_000),

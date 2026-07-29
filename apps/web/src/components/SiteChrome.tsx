@@ -34,6 +34,14 @@ const toolLinks = [
   { href: '/flatten-pdf', label: 'Flatten PDF' },
   { href: '/annotate-pdf', label: 'Annotate PDF' },
   { href: '/edit-links-pdf', label: 'Edit links' },
+  { href: '/pdf-to-excel', label: 'PDF to Excel' },
+  { href: '/pdf-to-pptx', label: 'PDF to PPTX' },
+  { href: '/bates-numbering', label: 'Bates numbering' },
+  { href: '/create-pdf-form', label: 'Create PDF form' },
+  { href: '/redact-pdf', label: 'Redact PDF' },
+  { href: '/pdf-to-html', label: 'PDF to HTML' },
+  { href: '/office-to-pdf', label: 'Office to PDF' },
+  { href: '/cert-sign-pdf', label: 'Cert sign PDF' },
 ];
 
 export function SiteHeader({ variant = 'light' }: { variant?: 'light' | 'dark' }) {
