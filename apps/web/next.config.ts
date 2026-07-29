@@ -20,7 +20,7 @@ try {
 
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://pagead2.googlesyndication.com https://www.googletagservices.com https://www.google.com https://partner.googleadservices.com",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://pagead2.googlesyndication.com https://www.googletagservices.com https://www.google.com https://partner.googleadservices.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https:",
@@ -50,10 +50,31 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react'],
   },
-  webpack: (config) => {
-    config.resolve.alias = {
-      ...config.resolve.alias,
-    };
+  webpack: (config, { isServer, webpack }) => {
+    // pdfstudio / qpdf.wasm glue references Node-only `node:` specifiers.
+    // Those branches never run in the browser, but webpack still resolves them.
+    config.plugins.push(
+      new webpack.NormalModuleReplacementPlugin(/^node:/, (resource: {
+        request: string;
+      }) => {
+        resource.request = resource.request.replace(/^node:/, '');
+      }),
+    );
+
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        module: false,
+        path: false,
+        url: false,
+        crypto: false,
+        worker_threads: false,
+        child_process: false,
+        'fs/promises': false,
+      };
+    }
+
     config.experiments = {
       ...config.experiments,
       asyncWebAssembly: true,

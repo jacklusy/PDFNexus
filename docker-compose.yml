@@ -6,7 +6,8 @@ services:
       POSTGRES_PASSWORD: pdfnexus
       POSTGRES_DB: pdfnexus
     ports:
-      - "5432:5432"
+      # High host ports avoid clashing with other local Postgres (5432/5433).
+      - "55432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -18,7 +19,8 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      # High host port avoids clashing with other local Redis (6379).
+      - "56379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
