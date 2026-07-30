@@ -6,10 +6,12 @@ import { loadReadablePdf } from '../assertPdfReadable';
 
 export type FormFieldType =
   | 'text'
+  | 'date'
   | 'checkbox'
   | 'radio'
   | 'dropdown'
-  | 'button';
+  | 'button'
+  | 'signature';
 
 export interface FormFieldSpec {
   type: FormFieldType;
@@ -23,6 +25,9 @@ export interface FormFieldSpec {
   /** Button label / radio option value / dropdown options (comma-separated in UI). */
   options?: string[];
   label?: string;
+  /** Default text / date string. */
+  defaultValue?: string;
+  tooltip?: string;
 }
 
 export interface CreateFormFieldsOptions {
@@ -67,9 +72,27 @@ export async function createFormFields(
     };
 
     switch (spec.type) {
-      case 'text': {
+      case 'text':
+      case 'date': {
         const field = form.createTextField(name);
         if (spec.required) field.enableRequired();
+        if (spec.type === 'date') {
+          field.setMaxLength(10);
+          if (spec.defaultValue) field.setText(spec.defaultValue);
+          else field.setText('');
+        } else if (spec.defaultValue) {
+          field.setText(spec.defaultValue);
+        }
+        field.addToPage(page, box);
+        break;
+      }
+      case 'signature': {
+        // pdf-lib has no createSignature(); empty multiline text widget acts as
+        // a signature placeholder users can fill/sign in Acrobat or similar.
+        const field = form.createTextField(name);
+        if (spec.required) field.enableRequired();
+        field.enableMultiline();
+        field.setText(spec.defaultValue || '');
         field.addToPage(page, box);
         break;
       }

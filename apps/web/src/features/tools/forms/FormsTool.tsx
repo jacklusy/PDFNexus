@@ -169,10 +169,12 @@ export function FormsTool() {
             disabled={busy}
           >
             <option value="text">Text</option>
+            <option value="date">Date</option>
             <option value="checkbox">Checkbox</option>
             <option value="radio">Radio group</option>
             <option value="dropdown">Dropdown</option>
             <option value="button">Button</option>
+            <option value="signature">Signature</option>
           </select>
         </label>
         <label className="block text-sm text-[var(--color-muted)]">

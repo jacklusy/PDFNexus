@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { loadReadablePdf } from '../assertPdfReadable';
@@ -34,12 +34,14 @@ export function CropTool() {
   const [progress, setProgress] = useState<string | null>(null);
 
   const file = files[0]?.file;
+  /** Workspace bulk handoff (`?pages=1-3`) — must survive file-load reset. */
+  const urlPagesRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const pages = params.get('pages');
+    const pages = new URLSearchParams(window.location.search).get('pages');
     if (pages?.trim()) {
+      urlPagesRef.current = pages.trim();
       setPageMode('selected');
       setRangeText(pages.trim());
     }
@@ -61,8 +63,14 @@ export function CropTool() {
         setPageCount(n);
         setActivePage(1);
         setMargins(uniformMargins(0));
-        setRangeText('');
-        setPageMode('all');
+        const fromUrl = urlPagesRef.current;
+        if (fromUrl) {
+          setPageMode('selected');
+          setRangeText(fromUrl);
+        } else {
+          setRangeText('');
+          setPageMode('all');
+        }
         setError(null);
         setProgress(null);
         const page = doc.getPage(0);

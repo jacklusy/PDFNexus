@@ -65,8 +65,13 @@ function defaultRunners(): Partial<Record<BatchTool, BatchRunner>> {
       if (!job.inputBlob) throw new Error('Missing input file.');
       const bytes = await job.inputBlob.arrayBuffer();
       const result = await flattenPdf(bytes);
-      if (result.annotationError && !result.annotationsFlattened && !result.formsFlattened) {
-        throw new Error(result.annotationError);
+      // Any annotation-pass failure must fail the job (do not mark done on partial flatten).
+      if (result.annotationError && !result.annotationsFlattened) {
+        throw new Error(
+          result.formsFlattened
+            ? `Forms flattened, but annotations were not: ${result.annotationError}`
+            : result.annotationError
+        );
       }
       return new Blob([result.bytes], { type: 'application/pdf' });
     },

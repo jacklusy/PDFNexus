@@ -16,6 +16,7 @@ import {
   type TextOverlay,
   type ShapeOverlay,
   type WatermarkOverlay,
+  type FreehandOverlay,
 } from './types';
 
 export type OverlayToolMode =
@@ -42,7 +43,10 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
   const [wmText, setWmText] = useState('Confidential');
   const [wmTile, setWmTile] = useState(true);
   const drawRef = useRef<HTMLCanvasElement>(null);
+  const freehandRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
+  const freehandPts = useRef<Array<{ x: number; y: number }>>([]);
+  const [showFreehandPad, setShowFreehandPad] = useState(false);
 
   const file = files[0]?.file;
   const titles: Record<OverlayToolMode, string> = {
@@ -170,6 +174,77 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
     setOverlays((prev) => [...prev, item]);
   };
 
+  const addCallout = () => {
+    const boxX = 72;
+    const boxY = pageSize.h - 220;
+    const rect: ShapeOverlay = {
+      id: createId(),
+      kind: 'rect',
+      page: activePage,
+      x: boxX,
+      y: boxY,
+      width: 200,
+      height: 80,
+      rotation: 0,
+      opacity: 1,
+      stroke: '#b45309',
+      fill: '#fffbeb',
+      strokeWidth: 1.5,
+    };
+    const label: TextOverlay = {
+      id: createId(),
+      kind: 'text',
+      page: activePage,
+      x: boxX + 10,
+      y: boxY + 50,
+      width: 180,
+      height: 40,
+      rotation: 0,
+      opacity: 1,
+      text: textValue || 'Callout',
+      fontSize: 12,
+      color: '#78350f',
+    };
+    setOverlays((prev) => [...prev, rect, label]);
+  };
+
+  const placeFreehand = () => {
+    const pts = freehandPts.current;
+    if (pts.length < 2) {
+      setError('Draw a freehand stroke first.');
+      return;
+    }
+    const canvas = freehandRef.current;
+    if (!canvas) return;
+    // Map canvas coords (top-left origin) into PDF page points (bottom-left).
+    const xs = pts.map((p) => (p.x / canvas.width) * pageSize.w);
+    const ys = pts.map((p) => pageSize.h - (p.y / canvas.height) * pageSize.h);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const item: FreehandOverlay = {
+      id: createId(),
+      kind: 'freehand',
+      page: activePage,
+      x: minX,
+      y: minY,
+      width: Math.max(1, maxX - minX),
+      height: Math.max(1, maxY - minY),
+      rotation: 0,
+      opacity: 1,
+      points: xs.map((x, i) => ({ x, y: ys[i] })),
+      stroke: '#111827',
+      strokeWidth: 2,
+    };
+    setOverlays((prev) => [...prev, item]);
+    freehandPts.current = [];
+    const ctx = canvas.getContext('2d');
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setShowFreehandPad(false);
+    setError(null);
+  };
+
   const addWatermark = () => {
     const item: WatermarkOverlay = {
       id: createId(),
@@ -263,8 +338,12 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
     }
   };
 
-  const onPointer = (e: React.PointerEvent<HTMLCanvasElement>, type: 'down' | 'move' | 'up') => {
-    const canvas = drawRef.current;
+  const onPointer = (
+    e: React.PointerEvent<HTMLCanvasElement>,
+    type: 'down' | 'move' | 'up',
+    target: 'sign' | 'freehand' = 'sign'
+  ) => {
+    const canvas = target === 'freehand' ? freehandRef.current : drawRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -278,9 +357,15 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(x, y);
+      if (target === 'freehand') {
+        freehandPts.current = [{ x, y }];
+      }
     } else if (type === 'move' && drawing.current) {
       ctx.lineTo(x, y);
       ctx.stroke();
+      if (target === 'freehand') {
+        freehandPts.current.push({ x, y });
+      }
     } else if (type === 'up') {
       drawing.current = false;
     }
@@ -293,7 +378,7 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
         mode === 'sign'
           ? 'Electronic / visual signature stamps only — not a cryptographic digital signature.'
           : mode === 'edit'
-            ? 'Adds text and shape overlays. This is not full PDF text editing.'
+            ? 'Adds text, shapes, callouts, and freehand overlays. This is not full PDF text editing.'
             : 'Processed locally in your browser.'
       }
       files={files}
@@ -439,6 +524,49 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
               <Button size="sm" variant="secondary" onClick={() => addShape('arrow')}>
                 Arrow
               </Button>
+              <Button size="sm" variant="secondary" onClick={addCallout}>
+                Callout
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setShowFreehandPad((v) => !v)}
+              >
+                Freehand
+              </Button>
+            </div>
+          ) : null}
+
+          {mode === 'edit' && showFreehandPad ? (
+            <div className="space-y-2 rounded-xl border border-[var(--color-border)] p-3">
+              <p className="text-sm font-medium">Draw freehand on the page</p>
+              <canvas
+                ref={freehandRef}
+                width={480}
+                height={280}
+                className="mt-1 w-full max-w-md touch-none rounded-lg border border-[var(--color-border)] bg-white"
+                onPointerDown={(e) => onPointer(e, 'down', 'freehand')}
+                onPointerMove={(e) => onPointer(e, 'move', 'freehand')}
+                onPointerUp={(e) => onPointer(e, 'up', 'freehand')}
+                onPointerLeave={(e) => onPointer(e, 'up', 'freehand')}
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    freehandPts.current = [];
+                    const c = freehandRef.current;
+                    const ctx = c?.getContext('2d');
+                    if (c && ctx) ctx.clearRect(0, 0, c.width, c.height);
+                  }}
+                >
+                  Clear
+                </Button>
+                <Button size="sm" variant="outline" onClick={placeFreehand}>
+                  Place freehand
+                </Button>
+              </div>
             </div>
           ) : null}
 

@@ -6,7 +6,7 @@ import { OverlayTool } from '@/features/tools/overlays/OverlayTool';
 export const metadata: Metadata = pageMetadata({
   title: 'Edit PDF Online — Add Text and Shapes to PDF',
   description:
-    'Annotate PDFs with text boxes and rectangles. Position elements via coordinates, then export overlays into a flattened copy — free, local, no upload.',
+    'Annotate PDFs with text, shapes, callouts, and freehand. Position overlays, then export into a flattened copy — free, local, no upload.',
   path: '/edit-pdf',
 });
 
@@ -14,12 +14,12 @@ export default function Page() {
   return (
     <ToolPageShell
       title="Edit PDF"
-      description="Add text labels, rectangles, and basic shapes on top of your PDF pages. Place tools with coordinate controls, then export overlays into the document."
+      description="Add text, rectangles, ellipses, lines, arrows, callouts, and freehand strokes on top of your PDF pages. Export overlays into the document."
       path="/edit-pdf"
       howItWorks={[
         'Upload the PDF you want to annotate.',
-        'Select text or shape tools and set position via coordinates.',
-        'Place tools, then download the edited PDF with overlays exported into the pages.',
+        'Add text, shapes, callouts, or freehand drawings on the active page.',
+        'Download the edited PDF with overlays exported into the pages.',
       ]}
       privacyNote="This tool runs in your browser. Your file is not uploaded to process it."
       limits={[
@@ -31,12 +31,12 @@ export default function Page() {
         {
           question: 'Can I change existing PDF text?',
           answer:
-            'This tool overlays new text on the page. It does not modify text already embedded in the PDF by the original author.',
+            'No. Full in-place editing of existing PDF text is out of scope for this product phase (complex fonts, reflow, and layout). This tool overlays new content only. Keep using overlays for labels and markup.',
         },
         {
           question: 'Which shapes are supported?',
           answer:
-            'You can add text boxes and rectangular shapes. Use the workspace for a broader set of editing tools.',
+            'Rectangle, ellipse, line, arrow, callout (box + text), and freehand strokes, plus text labels.',
         },
         {
           question: 'Are edits saved as separate layers?',

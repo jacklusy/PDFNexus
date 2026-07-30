@@ -6,6 +6,7 @@ import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { parsePageRanges } from '../parsePageRanges';
+import { zipOutputs } from '../zipOutputs';
 import {
   BATES_NEXT_STORAGE_KEY,
   batesPdf,
@@ -46,7 +47,7 @@ export function BatesTool() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
 
-  const file = files[0]?.file;
+  const firstFile = files[0]?.file;
   const preview = formatBatesNumber(start, width, prefix, suffix);
 
   useEffect(() => {
@@ -56,12 +57,12 @@ export function BatesTool() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!file) {
+      if (!firstFile) {
         setPageCount(0);
         return;
       }
       try {
-        const buf = await file.arrayBuffer();
+        const buf = await firstFile.arrayBuffer();
         const doc = await loadReadablePdf(buf);
         if (!cancelled) {
           const n = doc.getPageCount();
@@ -76,36 +77,61 @@ export function BatesTool() {
     return () => {
       cancelled = true;
     };
-  }, [file]);
+  }, [firstFile]);
 
   const run = async () => {
-    if (!file || !pageCount) return;
+    if (!files.length) return;
     setBusy(true);
     setError(null);
     setProgress('Applying Bates numbers…');
     try {
-      const pages = parsePageRanges(rangeText || `1-${pageCount}`, {
-        pageCount,
-        rejectOverlaps: true,
-      });
-      const bytes = await file.arrayBuffer();
-      const result = await batesPdf({
-        bytes,
-        pages,
-        start,
-        width,
-        prefix,
-        suffix,
-        position,
-        align,
-        onProgress: (c, t) => setProgress(`Page ${Math.min(c + 1, t)} / ${t}`),
-      });
-      writeStoredNext(result.nextNumber);
-      setStart(result.nextNumber);
-      const name = file.name.replace(/\.pdf$/i, '') + '-bates.pdf';
-      downloadBlobLocally(new Blob([result.bytes], { type: 'application/pdf' }), name);
+      let next = start;
+      const outputs: Array<{ fileName: string; blob: Blob }> = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i].file;
+        setProgress(`File ${i + 1}/${files.length}: ${file.name}`);
+        const buf = await file.arrayBuffer();
+        const doc = await loadReadablePdf(buf);
+        const n = doc.getPageCount();
+        // First file uses the range field; later files stamp all pages for continuity.
+        const pages =
+          i === 0
+            ? parsePageRanges(rangeText || `1-${n}`, {
+                pageCount: n,
+                rejectOverlaps: true,
+              })
+            : Array.from({ length: n }, (_, p) => p + 1);
+
+        const result = await batesPdf({
+          bytes: buf,
+          pages,
+          start: next,
+          width,
+          prefix,
+          suffix,
+          position,
+          align,
+        });
+        next = result.nextNumber;
+        const name = file.name.replace(/\.pdf$/i, '') + '-bates.pdf';
+        outputs.push({
+          fileName: name,
+          blob: new Blob([result.bytes], { type: 'application/pdf' }),
+        });
+      }
+
+      writeStoredNext(next);
+      setStart(next);
+
+      if (outputs.length === 1) {
+        downloadBlobLocally(outputs[0].blob, outputs[0].fileName);
+      } else {
+        const zip = await zipOutputs(outputs);
+        downloadBlobLocally(zip, 'bates-numbered.zip');
+      }
       setProgress(
-        `Downloaded. Next number saved as ${result.nextNumber} for multi-file continuity.`
+        `Downloaded ${outputs.length} file(s). Next number saved as ${next} for continuity.`
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -118,7 +144,7 @@ export function BatesTool() {
   return (
     <ToolWorkbench
       title="Bates numbering"
-      description="Stamp sequential identifiers (prefix + zero-padded number + suffix) on each page."
+      description="Stamp sequential identifiers (prefix + zero-padded number + suffix). Multiple PDFs continue the sequence in upload order."
       files={files}
       onFilesChange={(next) => {
         setFiles(next);
@@ -126,23 +152,26 @@ export function BatesTool() {
         setProgress(null);
       }}
       busy={busy}
+      multiple
+      maxFiles={25}
       footer={
         <Button
           variant="primary"
-          disabled={!file || busy}
+          disabled={!files.length || busy}
           loading={busy}
           onClick={() => void run()}
         >
-          Apply & download
+          Apply & download{files.length > 1 ? ` (${files.length} files)` : ''}
         </Button>
       }
     >
       <p className="text-sm text-[var(--color-muted)]">
-        Multi-file continuity: the next number after each export is stored in{' '}
+        Multi-file continuity: numbers advance across queued files in one run, and the next
+        value is stored in{' '}
         <code className="rounded bg-[var(--color-surface-2)] px-1 text-xs">
           {BATES_NEXT_STORAGE_KEY}
         </code>{' '}
-        so the following PDF continues the sequence.
+        for later sessions.
       </p>
 
       <p className="rounded-lg border border-[var(--color-border)] px-3 py-2 font-mono text-sm text-[var(--color-ink)]">
@@ -152,7 +181,7 @@ export function BatesTool() {
       {pageCount > 0 ? (
         <>
           <label className="block text-sm">
-            Pages
+            Pages (first file)
             <input
               className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2"
               value={rangeText}
@@ -160,6 +189,12 @@ export function BatesTool() {
               disabled={busy}
             />
           </label>
+          {files.length > 1 ? (
+            <p className="text-xs text-[var(--color-muted)]">
+              Additional files stamp all pages, continuing from the first file&apos;s last
+              number.
+            </p>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm">
               Start number

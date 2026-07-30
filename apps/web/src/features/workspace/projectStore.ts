@@ -184,22 +184,31 @@ export async function saveFileBlob(
   blob: Blob,
   projectId?: string
 ): Promise<void> {
-  const current = await totalBlobBytes();
-  const next = current + blob.size;
-  if (next > MAX_PROJECT_BLOB_BYTES) {
-    throw new ProjectStoreQuotaWarning(next);
-  }
   const db = await openDb();
   try {
-    const tx = db.transaction(STORE_BLOBS, 'readwrite');
-    tx.objectStore(STORE_BLOBS).put({
+    // Subtract existing row size so re-persisting the same id does not double-count.
+    const readTx = db.transaction(STORE_BLOBS, 'readonly');
+    const existing = await idbReq<{ size?: number } | undefined>(
+      readTx.objectStore(STORE_BLOBS).get(id)
+    );
+    await txDone(readTx);
+    const oldSize = existing?.size ?? 0;
+
+    const current = await totalBlobBytes();
+    const next = current - oldSize + blob.size;
+    if (next > MAX_PROJECT_BLOB_BYTES) {
+      throw new ProjectStoreQuotaWarning(next);
+    }
+
+    const writeTx = db.transaction(STORE_BLOBS, 'readwrite');
+    writeTx.objectStore(STORE_BLOBS).put({
       id,
       projectId,
       blob,
       size: blob.size,
       updatedAt: Date.now(),
     });
-    await txDone(tx);
+    await txDone(writeTx);
   } finally {
     db.close();
   }

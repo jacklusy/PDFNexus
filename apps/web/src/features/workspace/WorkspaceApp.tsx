@@ -1058,6 +1058,34 @@ export default function WorkspaceApp() {
                     >
                       Redact PDF
                     </DropdownItem>
+                    <DropdownItem
+                      onClick={() => {
+                        window.location.href = '/create-pdf-form';
+                      }}
+                    >
+                      Create PDF form
+                    </DropdownItem>
+                    <DropdownItem
+                      onClick={() => {
+                        window.location.href = '/pdf-to-html';
+                      }}
+                    >
+                      PDF to HTML
+                    </DropdownItem>
+                    <DropdownItem
+                      onClick={() => {
+                        window.location.href = '/office-to-pdf';
+                      }}
+                    >
+                      Office to PDF
+                    </DropdownItem>
+                    <DropdownItem
+                      onClick={() => {
+                        window.location.href = '/cert-sign-pdf';
+                      }}
+                    >
+                      Cert sign PDF
+                    </DropdownItem>
                     <DropdownItem danger onClick={handleClearAll}>
                       Reset workspace
                     </DropdownItem>
@@ -1130,7 +1158,7 @@ export default function WorkspaceApp() {
                 <FilePlus2 className="h-3.5 w-3.5" /> Select Files / Images From Device
               </button>
               <p className="mt-4 max-w-xs text-[10px] leading-normal text-slate-400">
-                No quality loss. Processed 100% locally until email-verified download.
+                No quality loss. Processed 100% locally — download your PDF anytime without email verification.
               </p>
             </div>
           ) : (
@@ -1243,6 +1271,18 @@ export default function WorkspaceApp() {
         }}
         onRedactSelected={() => {
           window.location.href = '/redact-pdf';
+        }}
+        onFormSelected={() => {
+          window.location.href = '/create-pdf-form';
+        }}
+        onHtmlSelected={() => {
+          window.location.href = '/pdf-to-html';
+        }}
+        onOfficeSelected={() => {
+          window.location.href = '/office-to-pdf';
+        }}
+        onCertSignSelected={() => {
+          window.location.href = '/cert-sign-pdf';
         }}
       />
 

@@ -78,6 +78,7 @@ export async function detectTablesViaOcr(options: {
   });
 
   const tables: DetectedTable[] = [];
+  let failures = 0;
   for (let i = 0; i < images.files.length; i++) {
     const pageNum = pageList[i];
     options.onProgress?.(
@@ -91,14 +92,27 @@ export async function detectTablesViaOcr(options: {
         credentials: 'include',
         body: JSON.stringify({ imageBase64, pageNumber: pageNum }),
       });
-      if (!res.ok) continue;
+      if (!res.ok) {
+        failures += 1;
+        continue;
+      }
       const json = (await res.json()) as { success?: boolean; layout?: OcrLayout };
       if (json.success && json.layout) {
         tables.push(...tablesFromLayout(pageNum, json.layout));
       }
     } catch {
-      // Skip failed pages; local tables remain.
+      failures += 1;
     }
+  }
+  if (failures === images.files.length && tables.length === 0) {
+    throw new Error(
+      'OCR failed for every page (network, rate limit, or API error). Try again or use local text-layer detection.'
+    );
+  }
+  if (failures > 0 && tables.length === 0) {
+    throw new Error(
+      `OCR completed with ${failures} failed page(s) and no tables found.`
+    );
   }
   return tables;
 }

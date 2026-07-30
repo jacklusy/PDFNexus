@@ -6,12 +6,13 @@ import {
   loadProject,
   saveFileBlob,
   saveProject,
+  totalBlobBytes,
 } from './projectStore';
 
 describe('projectStore blob roundtrip', () => {
   afterEach(async () => {
     try {
-      await clearProject('test-phase3');
+      await clearProject();
     } catch {
       // ignore
     }
@@ -37,5 +38,16 @@ describe('projectStore blob roundtrip', () => {
     expect(new Uint8Array(await restored!.arrayBuffer())).toEqual(
       new Uint8Array(await blob.arrayBuffer())
     );
+  });
+
+  it('does not double-count quota when overwriting the same blob id', async () => {
+    const projectId = 'test-phase3-ow';
+    const blobId = `${projectId}:input:overwrite`;
+    const first = new Blob([new Uint8Array(1024)], { type: 'application/pdf' });
+    const second = new Blob([new Uint8Array(2048)], { type: 'application/pdf' });
+    await saveFileBlob(blobId, first, projectId);
+    await saveFileBlob(blobId, second, projectId);
+    const total = await totalBlobBytes();
+    expect(total).toBe(2048);
   });
 });

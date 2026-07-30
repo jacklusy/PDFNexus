@@ -38,6 +38,10 @@ interface BulkControlsProps {
   onPptxSelected?: () => void;
   onBatesSelected?: () => void;
   onRedactSelected?: () => void;
+  onFormSelected?: () => void;
+  onHtmlSelected?: () => void;
+  onOfficeSelected?: () => void;
+  onCertSignSelected?: () => void;
 }
 
 export default function BulkControls({
@@ -58,6 +62,10 @@ export default function BulkControls({
   onPptxSelected,
   onBatesSelected,
   onRedactSelected,
+  onFormSelected,
+  onHtmlSelected,
+  onOfficeSelected,
+  onCertSignSelected,
 }: BulkControlsProps) {
   const [showMoveInput, setShowMoveInput] = useState(false);
   const [targetIndexString, setTargetIndexString] = useState('1');
@@ -263,6 +271,50 @@ export default function BulkControls({
               className="p-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
             >
               <span className="text-xs font-semibold">Redact</span>
+            </button>
+          )}
+
+          {onFormSelected && (
+            <button
+              id="btn-bulk-form"
+              onClick={onFormSelected}
+              title="Open Create PDF form"
+              className="p-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span className="text-xs font-semibold">Form</span>
+            </button>
+          )}
+
+          {onHtmlSelected && (
+            <button
+              id="btn-bulk-html"
+              onClick={onHtmlSelected}
+              title="Open PDF to HTML"
+              className="p-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span className="text-xs font-semibold">HTML</span>
+            </button>
+          )}
+
+          {onOfficeSelected && (
+            <button
+              id="btn-bulk-office"
+              onClick={onOfficeSelected}
+              title="Open Office to PDF"
+              className="p-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span className="text-xs font-semibold">Office</span>
+            </button>
+          )}
+
+          {onCertSignSelected && (
+            <button
+              id="btn-bulk-cert"
+              onClick={onCertSignSelected}
+              title="Open certificate sign"
+              className="p-2 rounded-xl hover:bg-slate-800 text-slate-300 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span className="text-xs font-semibold">Cert</span>
             </button>
           )}
 

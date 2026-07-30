@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { loadReadablePdf } from '../assertPdfReadable';
@@ -38,6 +38,7 @@ export function ResizeTool() {
   const [progress, setProgress] = useState<string | null>(null);
 
   const file = files[0]?.file;
+  const urlPagesRef = useRef<string | null>(null);
 
   const targetPt = useMemo(() => {
     try {
@@ -50,6 +51,16 @@ export function ResizeTool() {
       return PAPER_SIZES_PT.A4;
     }
   }, [preset, customW, customH, unit]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const pages = new URLSearchParams(window.location.search).get('pages');
+    if (pages?.trim()) {
+      urlPagesRef.current = pages.trim();
+      setUseRange(true);
+      setRangeText(pages.trim());
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +76,11 @@ export function ResizeTool() {
         if (cancelled) return;
         setPageCount(doc.getPageCount());
         setActivePage(1);
+        const fromUrl = urlPagesRef.current;
+        if (fromUrl) {
+          setUseRange(true);
+          setRangeText(fromUrl);
+        }
         setError(null);
         setProgress(null);
         setPdfBytes(buf.slice(0));
