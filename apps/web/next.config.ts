@@ -24,7 +24,7 @@ const csp = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https:",
-  `connect-src 'self' ${apiOrigin} ${storageOrigin} https://pagead2.googlesyndication.com`,
+  `connect-src 'self' ${apiOrigin} ${storageOrigin} https://pagead2.googlesyndication.com https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com`,
   "worker-src 'self' blob:",
   "frame-src 'self' https://googleads.g.doubleclick.net https://tpc.googlesyndication.com",
   "object-src 'none'",

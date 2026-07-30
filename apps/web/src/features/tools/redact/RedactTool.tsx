@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench } from '../ToolWorkbench';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
 import { useToolHandoff } from '../useToolHandoff';
 import { loadReadablePdf } from '../assertPdfReadable';
 import {
@@ -34,6 +36,10 @@ export function RedactTool() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const [progressCurrent, setProgressCurrent] = useState(0);
+  const [progressTotal, setProgressTotal] = useState(0);
+  const cancelledRef = useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
 
   const file = files[0]?.file;
 
@@ -85,23 +91,35 @@ export function RedactTool() {
 
   const apply = async () => {
     if (!file || !confirmed || regions.length === 0) return;
+    cancelledRef.current = false;
     setBusy(true);
     setError(null);
     setMatches(null);
     setProgress('Rebuilding pages (permanent redaction)…');
+    setProgressCurrent(0);
+    setProgressTotal(0);
     try {
       const bytes = await file.arrayBuffer();
       const out = await redactPdf({
         bytes,
         regions: regions.map(({ id: _id, ...r }) => r),
-        onProgress: (c, t) => setProgress(`Redacting page ${Math.min(c + 1, t)} / ${t}`),
+        onProgress: (c, t) => {
+          if (cancelledRef.current) throw new Error('Cancelled');
+          setProgressCurrent(c);
+          setProgressTotal(t);
+          setProgress(`Redacting page ${Math.min(c + 1, t)} / ${t}`);
+        },
       });
+      if (cancelledRef.current) throw new Error('Cancelled');
       const phraseList = phrases
         .split(/[\n,]/)
         .map((p) => p.trim())
         .filter(Boolean);
       setProgress('Verifying text layer…');
+      setProgressCurrent(0);
+      setProgressTotal(0);
       const remaining = await verifyRedaction(out, phraseList);
+      if (cancelledRef.current) throw new Error('Cancelled');
       setMatches(remaining);
 
       const name = file.name.replace(/\.pdf$/i, '') + '-redacted.pdf';
@@ -114,8 +132,16 @@ export function RedactTool() {
             : 'Downloaded. Add phrases above to verify content is gone.'
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setProgress(null);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === 'Cancelled') {
+        setProgress(null);
+        setError(null);
+      } else {
+        setError(msg);
+        setProgress(null);
+      }
+      setProgressCurrent(0);
+      setProgressTotal(0);
     } finally {
       setBusy(false);
     }
@@ -295,7 +321,24 @@ export function RedactTool() {
         </div>
       ) : null}
 
-      {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
+      {busy && progress ? (
+        <ToolProgress
+          stage={progress}
+          percent={
+            progressTotal > 0
+              ? Math.round((progressCurrent / progressTotal) * 100)
+              : null
+          }
+          currentPage={progressTotal > 0 ? progressCurrent : undefined}
+          totalPages={progressTotal > 0 ? progressTotal : undefined}
+          elapsedLabel={elapsedLabel}
+          onCancel={() => {
+            cancelledRef.current = true;
+          }}
+        />
+      ) : progress && !busy ? (
+        <p className="text-sm text-[var(--color-muted)]">{progress}</p>
+      ) : null}
       {error ? (
         <p className="text-sm text-[var(--color-danger)]" role="alert">
           {error}

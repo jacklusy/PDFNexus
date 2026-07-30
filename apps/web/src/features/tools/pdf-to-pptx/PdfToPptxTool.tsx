@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench } from '../ToolWorkbench';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
 import { useToolHandoff } from '../useToolHandoff';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { parsePageRanges } from '../parsePageRanges';
@@ -17,6 +19,10 @@ export function PdfToPptxTool() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const [progressCurrent, setProgressCurrent] = useState(0);
+  const [progressTotal, setProgressTotal] = useState(0);
+  const cancelledRef = useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
 
   const file = files[0]?.file;
 
@@ -47,9 +53,12 @@ export function PdfToPptxTool() {
 
   const run = async () => {
     if (!file || !pageCount) return;
+    cancelledRef.current = false;
     setBusy(true);
     setError(null);
     setProgress('Rendering slides…');
+    setProgressCurrent(0);
+    setProgressTotal(0);
     try {
       const pages = parsePageRanges(rangeText || `1-${pageCount}`, {
         pageCount,
@@ -62,13 +71,29 @@ export function PdfToPptxTool() {
         pages,
         scale,
         baseName,
-        onProgress: (c, t) => setProgress(`Building slide ${Math.min(c + 1, t)} / ${t}…`),
+        onProgress: (c, t) => {
+          if (cancelledRef.current) throw new Error('Cancelled');
+          setProgressCurrent(c);
+          setProgressTotal(t);
+          setProgress(`Building slide ${Math.min(c + 1, t)} / ${t}…`);
+        },
       });
+      if (cancelledRef.current) throw new Error('Cancelled');
       downloadBlobLocally(blob, `${baseName}.pptx`);
       setProgress(`Downloaded ${pages.length} image-based slide(s)`);
+      setProgressCurrent(0);
+      setProgressTotal(0);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setProgress(null);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === 'Cancelled') {
+        setProgress(null);
+        setError(null);
+      } else {
+        setError(msg);
+        setProgress(null);
+      }
+      setProgressCurrent(0);
+      setProgressTotal(0);
     } finally {
       setBusy(false);
     }
@@ -128,7 +153,24 @@ export function PdfToPptxTool() {
         </>
       ) : null}
 
-      {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
+      {busy && progress ? (
+        <ToolProgress
+          stage={progress}
+          percent={
+            progressTotal > 0
+              ? Math.round((progressCurrent / progressTotal) * 100)
+              : null
+          }
+          currentPage={progressTotal > 0 ? progressCurrent : undefined}
+          totalPages={progressTotal > 0 ? progressTotal : undefined}
+          elapsedLabel={elapsedLabel}
+          onCancel={() => {
+            cancelledRef.current = true;
+          }}
+        />
+      ) : progress && !busy ? (
+        <p className="text-sm text-[var(--color-muted)]">{progress}</p>
+      ) : null}
       {error ? (
         <p className="text-sm text-[var(--color-danger)]" role="alert">
           {error}

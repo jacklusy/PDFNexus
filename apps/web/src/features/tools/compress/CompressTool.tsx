@@ -7,6 +7,9 @@ import { formatTransferBytes } from '@/features/transfer/transferFormat';
 import { ensurePdfWorker } from '@/lib/pdf/pdfHelpers';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolError } from '../ToolError';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
 import {
   compressPdf,
   settingsForPreset,
@@ -62,8 +65,12 @@ export function CompressTool() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const [progressCurrent, setProgressCurrent] = useState(0);
+  const [progressTotal, setProgressTotal] = useState(0);
   const [stats, setStats] = useState<CompressResult | null>(null);
   const pdfjsRef = useRef<PDFDocumentProxy | null>(null);
+  const cancelledRef = useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
 
   const file = files[0]?.file;
   const settings = useMemo(
@@ -103,10 +110,13 @@ export function CompressTool() {
 
   const run = async () => {
     if (!file) return;
+    cancelledRef.current = false;
     setBusy(true);
     setError(null);
     setStats(null);
     setProgress('Starting…');
+    setProgressCurrent(0);
+    setProgressTotal(0);
     let pdfjsDoc: PDFDocumentProxy | null = null;
     try {
       const bytes = await file.arrayBuffer();
@@ -119,11 +129,18 @@ export function CompressTool() {
         settings,
         rasterizePages: rasterize,
         renderPage: async (pageIndex, maxPx, quality) => {
+          if (cancelledRef.current) throw new Error('Cancelled');
           if (!pdfjsDoc) throw new Error('PDF.js document missing');
           return renderPageJpegFromDoc(pdfjsDoc, pageIndex, maxPx, quality);
         },
-        onProgress: (c, t, msg) => setProgress(msg || `${c}/${t}`),
+        onProgress: (c, t, msg) => {
+          if (cancelledRef.current) throw new Error('Cancelled');
+          setProgressCurrent(c);
+          setProgressTotal(t);
+          setProgress(msg || `${c}/${t}`);
+        },
       });
+      if (cancelledRef.current) throw new Error('Cancelled');
       setStats(result);
       const name = file.name.replace(/\.pdf$/i, '') + '-compressed.pdf';
       downloadBlobLocally(
@@ -131,9 +148,19 @@ export function CompressTool() {
         name
       );
       setProgress('Downloaded');
+      setProgressCurrent(0);
+      setProgressTotal(0);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setProgress(null);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === 'Cancelled') {
+        setProgress(null);
+        setError(null);
+      } else {
+        setError(msg);
+        setProgress(null);
+      }
+      setProgressCurrent(0);
+      setProgressTotal(0);
     } finally {
       if (pdfjsDoc) {
         await pdfjsDoc.destroy().catch(() => undefined);
@@ -256,11 +283,33 @@ export function CompressTool() {
         </dl>
       ) : null}
 
-      {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
+      {busy && progress ? (
+        <ToolProgress
+          stage={progress}
+          percent={
+            progressTotal > 0
+              ? Math.round((progressCurrent / progressTotal) * 100)
+              : null
+          }
+          currentPage={progressTotal > 0 ? progressCurrent : undefined}
+          totalPages={progressTotal > 0 ? progressTotal : undefined}
+          elapsedLabel={elapsedLabel}
+          onCancel={() => {
+            cancelledRef.current = true;
+          }}
+        />
+      ) : progress && !busy ? (
+        <p className="text-sm text-[var(--color-muted)]">{progress}</p>
+      ) : null}
       {error ? (
-        <p className="text-sm text-[var(--color-danger)]" role="alert">
-          {error}
-        </p>
+        <ToolError
+          message={error}
+          fileName={file?.name}
+          onRetry={() => {
+            setError(null);
+            void run();
+          }}
+        />
       ) : null}
     </ToolWorkbench>
   );

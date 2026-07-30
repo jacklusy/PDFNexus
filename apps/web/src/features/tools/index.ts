@@ -3,12 +3,22 @@ export { zipOutputs } from './zipOutputs';
 export { ToolWorkbench } from './ToolWorkbench';
 export type { ToolFile } from './ToolWorkbench';
 export { ToolPageShell } from './ToolPageShell';
+export { ToolProgress } from './ToolProgress';
+export { ToolError } from './ToolError';
+export { useTimedProgress, formatElapsed } from './useTimedProgress';
+export {
+  badgeForProcessingMode,
+  PROCESSING_MODE_BADGE,
+  type ProcessingMode,
+} from './processingMode';
+export { TOOL_CATEGORIES } from './toolCategories';
 export {
   PHASE1_TOOL_ROUTES,
   PHASE2_TOOL_ROUTES,
   PHASE3_TOOL_ROUTES,
   TOOL_ROUTES,
   TOOL_NAV,
+  SITEMAP_TOOL_ROUTES,
 } from './toolRoutes';
 
 export { PdfToExcelTool } from './pdf-to-excel/PdfToExcelTool';

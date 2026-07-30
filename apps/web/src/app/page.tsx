@@ -13,7 +13,7 @@ import { pageMetadata } from '@/lib/seo';
 export const metadata: Metadata = pageMetadata({
   title: 'Merge & organize PDFs locally',
   description:
-    'Merge, organize, rotate, and convert PDFs entirely in your browser. Only final files leave your device after email verification.',
+    'Merge, organize, rotate, and convert PDFs entirely in your browser. Local tools download immediately — no account required. Email and Drive are optional.',
   path: '/',
 });
 
@@ -50,7 +50,7 @@ export default function HomePage() {
               applicationCategory: 'BusinessApplication',
               operatingSystem: 'Web',
               description:
-                'Browser-local PDF merge and organize with verified delivery.',
+                'Browser-local PDF toolkit with immediate downloads and optional cloud delivery.',
             },
             {
               '@type': 'FAQPage',
@@ -76,8 +76,9 @@ export default function HomePage() {
             </h1>
             <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/80 md:text-base">
               Assemble multi-document packs in your browser. Source files stay
-              local while you edit. Only the final PDF or Word export leaves
-              your device — after a quick email verification.
+              local while you edit, and finished PDFs download immediately — no
+              account required. Optional email delivery or Google Drive is only
+              used when you choose it.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link

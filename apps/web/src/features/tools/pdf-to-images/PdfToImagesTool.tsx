@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { parsePageRanges } from '../parsePageRanges';
 import { pdfToImages, type ImageExportFormat } from './pdfToImages';
@@ -20,6 +22,10 @@ export function PdfToImagesTool() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const [progressCurrent, setProgressCurrent] = useState(0);
+  const [progressTotal, setProgressTotal] = useState(0);
+  const cancelledRef = useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
 
   const file = files[0]?.file;
 
@@ -50,9 +56,12 @@ export function PdfToImagesTool() {
 
   const run = async () => {
     if (!file || !pageCount) return;
+    cancelledRef.current = false;
     setBusy(true);
     setError(null);
     setProgress('Rendering…');
+    setProgressCurrent(0);
+    setProgressTotal(0);
     try {
       const pages = parsePageRanges(rangeText || `1-${pageCount}`, {
         pageCount,
@@ -69,17 +78,33 @@ export function PdfToImagesTool() {
         background,
         namePattern,
         baseName,
-        onProgress: (c, t) => setProgress(`Rendering ${c}/${t}…`),
+        onProgress: (c, t) => {
+          if (cancelledRef.current) throw new Error('Cancelled');
+          setProgressCurrent(c);
+          setProgressTotal(t);
+          setProgress(`Rendering ${c}/${t}…`);
+        },
       });
+      if (cancelledRef.current) throw new Error('Cancelled');
       if (result.zipBlob) {
         downloadBlobLocally(result.zipBlob, `${baseName}-images.zip`);
       } else if (result.files[0]) {
         downloadBlobLocally(result.files[0].blob, result.files[0].fileName);
       }
       setProgress(`Done — ${result.files.length} image(s)`);
+      setProgressCurrent(0);
+      setProgressTotal(0);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setProgress(null);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === 'Cancelled') {
+        setProgress(null);
+        setError(null);
+      } else {
+        setError(msg);
+        setProgress(null);
+      }
+      setProgressCurrent(0);
+      setProgressTotal(0);
     } finally {
       setBusy(false);
     }
@@ -186,7 +211,24 @@ export function PdfToImagesTool() {
           </label>
         </>
       ) : null}
-      {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
+      {busy && progress ? (
+        <ToolProgress
+          stage={progress}
+          percent={
+            progressTotal > 0
+              ? Math.round((progressCurrent / progressTotal) * 100)
+              : null
+          }
+          currentPage={progressTotal > 0 ? progressCurrent : undefined}
+          totalPages={progressTotal > 0 ? progressTotal : undefined}
+          elapsedLabel={elapsedLabel}
+          onCancel={() => {
+            cancelledRef.current = true;
+          }}
+        />
+      ) : progress && !busy ? (
+        <p className="text-sm text-[var(--color-muted)]">{progress}</p>
+      ) : null}
       {error ? (
         <p className="text-sm text-[var(--color-danger)]" role="alert">
           {error}

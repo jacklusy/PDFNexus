@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench } from '../ToolWorkbench';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
 import { useToolHandoff } from '../useToolHandoff';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { parsePageRanges } from '../parsePageRanges';
@@ -47,6 +49,12 @@ export function BatesTool() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const [progressCurrent, setProgressCurrent] = useState(0);
+  const [progressTotal, setProgressTotal] = useState(0);
+  const [fileCurrent, setFileCurrent] = useState(0);
+  const [fileTotal, setFileTotal] = useState(0);
+  const cancelledRef = useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
 
   const firstFile = files[0]?.file;
   const preview = formatBatesNumber(start, width, prefix, suffix);
@@ -82,15 +90,22 @@ export function BatesTool() {
 
   const run = async () => {
     if (!files.length) return;
+    cancelledRef.current = false;
     setBusy(true);
     setError(null);
     setProgress('Applying Bates numbers…');
+    setProgressCurrent(0);
+    setProgressTotal(0);
+    setFileCurrent(0);
+    setFileTotal(files.length);
     try {
       let next = start;
       const outputs: Array<{ fileName: string; blob: Blob }> = [];
 
       for (let i = 0; i < files.length; i++) {
+        if (cancelledRef.current) throw new Error('Cancelled');
         const file = files[i].file;
+        setFileCurrent(i + 1);
         setProgress(`File ${i + 1}/${files.length}: ${file.name}`);
         const buf = await file.arrayBuffer();
         const doc = await loadReadablePdf(buf);
@@ -113,6 +128,12 @@ export function BatesTool() {
           suffix,
           position,
           align,
+          onProgress: (c, t) => {
+            if (cancelledRef.current) throw new Error('Cancelled');
+            setProgressCurrent(c);
+            setProgressTotal(t);
+            setProgress(`File ${i + 1}/${files.length}: page ${c}/${t}`);
+          },
         });
         next = result.nextNumber;
         const name = file.name.replace(/\.pdf$/i, '') + '-bates.pdf';
@@ -134,9 +155,23 @@ export function BatesTool() {
       setProgress(
         `Downloaded ${outputs.length} file(s). Next number saved as ${next} for continuity.`
       );
+      setProgressCurrent(0);
+      setProgressTotal(0);
+      setFileCurrent(0);
+      setFileTotal(0);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setProgress(null);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === 'Cancelled') {
+        setProgress(null);
+        setError(null);
+      } else {
+        setError(msg);
+        setProgress(null);
+      }
+      setProgressCurrent(0);
+      setProgressTotal(0);
+      setFileCurrent(0);
+      setFileTotal(0);
     } finally {
       setBusy(false);
     }
@@ -267,7 +302,26 @@ export function BatesTool() {
         </>
       ) : null}
 
-      {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
+      {busy && progress ? (
+        <ToolProgress
+          stage={progress}
+          percent={
+            progressTotal > 0
+              ? Math.round((progressCurrent / progressTotal) * 100)
+              : null
+          }
+          currentPage={progressTotal > 0 ? progressCurrent : undefined}
+          totalPages={progressTotal > 0 ? progressTotal : undefined}
+          currentFile={fileTotal > 0 ? fileCurrent : undefined}
+          totalFiles={fileTotal > 0 ? fileTotal : undefined}
+          elapsedLabel={elapsedLabel}
+          onCancel={() => {
+            cancelledRef.current = true;
+          }}
+        />
+      ) : progress && !busy ? (
+        <p className="text-sm text-[var(--color-muted)]">{progress}</p>
+      ) : null}
       {error ? (
         <p className="text-sm text-[var(--color-danger)]" role="alert">
           {error}

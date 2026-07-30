@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolError } from '../ToolError';
 import { clearPassword, getPdfToolkit } from '../protect/pdfToolkit';
 import { sanitizeToolkitError } from '../assertPdfReadable';
 
@@ -105,9 +106,13 @@ export function UnlockTool() {
       </p>
       {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
       {error ? (
-        <p className="text-sm text-[var(--color-danger)]" role="alert">
-          {error}
-        </p>
+        <ToolError
+          message={error}
+          fileName={file?.name}
+          onRetry={() => {
+            setError(null);
+          }}
+        />
       ) : null}
     </ToolWorkbench>
   );

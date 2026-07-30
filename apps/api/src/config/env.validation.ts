@@ -56,6 +56,13 @@ const envSchema = z.object({
   ADMIN_MAX_LOGIN_ATTEMPTS: z.coerce.number().int().positive().default(5),
   ADMIN_LOCKOUT_MINUTES: z.coerce.number().int().positive().default(15),
   LOG_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+  GOOGLE_CLIENT_ID: z.string().optional().default(''),
+  GOOGLE_CLIENT_SECRET: z.string().optional().default(''),
+  GOOGLE_REDIRECT_URI: z
+    .string()
+    .url()
+    .default('http://localhost:4000/api/cloud/drive/callback'),
+  GOOGLE_TOKEN_ENCRYPTION_KEY: z.string().optional().default(''),
 });
 
 export type EnvConfig = z.infer<typeof envSchema> & {

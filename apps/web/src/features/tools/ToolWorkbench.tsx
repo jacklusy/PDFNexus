@@ -5,6 +5,11 @@ import { FileUp, Lock, ShieldCheck, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/shared/ui/Button';
 import { formatTransferBytes } from '@/features/transfer/transferFormat';
+import {
+  badgeForProcessingMode,
+  defaultPrivacyNote,
+  type ProcessingMode,
+} from './processingMode';
 
 export interface ToolFile {
   id: string;
@@ -25,7 +30,9 @@ export interface ToolWorkbenchProps {
   footer?: React.ReactNode;
   className?: string;
   busy?: boolean;
-  /** Badge text next to the title. Default: "Fully local". */
+  /** Task.md §12 processing transparency. Default: local. */
+  processingMode?: ProcessingMode;
+  /** Optional override; otherwise derived from processingMode. */
   badgeLabel?: string;
   /** Drop-zone primary hint. */
   dropLabel?: string;
@@ -35,6 +42,8 @@ export interface ToolWorkbenchProps {
   privacyNote?: string;
   /** Accessible label for the file picker control. */
   pickerLabel?: string;
+  /** Append “· experimental” to the mode badge. */
+  experimental?: boolean;
 }
 
 function makeToolFile(file: File): ToolFile {
@@ -58,15 +67,20 @@ export function ToolWorkbench({
   footer,
   className,
   busy = false,
-  badgeLabel = 'Fully local',
+  processingMode = 'local',
+  badgeLabel,
   dropLabel = 'Drop a PDF here or click to browse',
   dropHint = 'Processed in your browser — files stay on this device',
-  privacyNote = 'No upload required for this tool. Optional email delivery is only offered after a local download when you choose it.',
+  privacyNote,
   pickerLabel = 'Choose PDF file',
+  experimental = false,
 }: ToolWorkbenchProps) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const resolvedBadge =
+    badgeLabel ?? badgeForProcessingMode(processingMode, experimental);
+  const resolvedPrivacy = privacyNote ?? defaultPrivacyNote(processingMode);
 
   const addFiles = useCallback(
     (list: FileList | File[]) => {
@@ -119,7 +133,7 @@ export function ToolWorkbench({
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-accent-soft)] px-3 py-1 text-xs font-semibold text-[var(--color-accent)]">
           <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-          {badgeLabel}
+          {resolvedBadge}
         </span>
       </div>
 
@@ -203,7 +217,7 @@ export function ToolWorkbench({
 
       <p className="mt-4 flex items-start gap-2 text-xs text-[var(--color-muted)]">
         <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-        {privacyNote}
+        {resolvedPrivacy}
       </p>
 
       {footer ? <div className="mt-4 flex flex-wrap gap-2">{footer}</div> : null}

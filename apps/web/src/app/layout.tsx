@@ -28,10 +28,11 @@ export const metadata: Metadata = {
     template: '%s · PDFNexus',
   },
   description:
-    'Merge, organize, rotate, and convert PDFs entirely in your browser. Only final files leave your device after email verification.',
+    'Merge, organize, rotate, and convert PDFs entirely in your browser. Local tools download immediately — no account required.',
   openGraph: {
     title: 'PDFNexus',
-    description: 'Local PDF merge & organize with verified delivery.',
+    description:
+      'Local PDF toolkit with immediate downloads. Email and Drive are optional.',
     url: appUrl,
     siteName: 'PDFNexus',
     type: 'website',
@@ -39,7 +40,8 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'PDFNexus',
-    description: 'Local PDF merge & organize with verified delivery.',
+    description:
+      'Local PDF toolkit with immediate downloads. Email and Drive are optional.',
   },
   robots: { index: true, follow: true },
 };

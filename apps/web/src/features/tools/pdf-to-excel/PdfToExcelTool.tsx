@@ -127,6 +127,7 @@ export function PdfToExcelTool() {
         setProgress(null);
       }}
       busy={busy}
+      processingMode={ocrConsent ? 'cloud_assisted' : 'partial'}
       footer={
         <Button
           variant="primary"

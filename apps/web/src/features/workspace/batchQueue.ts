@@ -1,6 +1,15 @@
 import { clearAllPdfCaches } from '@/lib/pdf';
 
-export type BatchTool = 'crop' | 'resize' | 'flatten' | 'compress';
+export type BatchTool =
+  | 'crop'
+  | 'resize'
+  | 'flatten'
+  | 'compress'
+  | 'watermark'
+  | 'pageNumbers'
+  | 'protect'
+  | 'pdfToJpg'
+  | 'bates';
 
 export type BatchJobStatus = 'pending' | 'running' | 'done' | 'failed';
 

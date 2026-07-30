@@ -53,6 +53,36 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'yearly',
       priority: 0.3,
     },
+    {
+      path: '/tools',
+      lastModified: '2026-07-30',
+      changeFrequency: 'weekly',
+      priority: 0.85,
+    },
+    {
+      path: '/tools/organize',
+      lastModified: '2026-07-30',
+      changeFrequency: 'weekly',
+      priority: 0.75,
+    },
+    {
+      path: '/tools/convert',
+      lastModified: '2026-07-30',
+      changeFrequency: 'weekly',
+      priority: 0.75,
+    },
+    {
+      path: '/tools/edit',
+      lastModified: '2026-07-30',
+      changeFrequency: 'weekly',
+      priority: 0.75,
+    },
+    {
+      path: '/tools/secure',
+      lastModified: '2026-07-30',
+      changeFrequency: 'weekly',
+      priority: 0.75,
+    },
     ...toolRoutes,
   ];
   return routes.map((route) => ({

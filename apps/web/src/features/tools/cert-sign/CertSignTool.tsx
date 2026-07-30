@@ -80,7 +80,8 @@ export function CertSignTool() {
         setProgress(null);
       }}
       busy={busy}
-      badgeLabel="Local · experimental"
+      processingMode="local"
+      experimental
       privacyNote="Certificate password and PKCS#12 stay in your browser. Passwords are never logged or uploaded."
       footer={
         <Button

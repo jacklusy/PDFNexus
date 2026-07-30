@@ -81,6 +81,55 @@ export function ToolPageShell({
             dangerouslySetInnerHTML={{ __html: escapeJsonLd(faqLd) }}
           />
         ) : null}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: escapeJsonLd({
+              '@context': 'https://schema.org',
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                {
+                  '@type': 'ListItem',
+                  position: 1,
+                  name: 'Home',
+                  item: getAppUrl(),
+                },
+                {
+                  '@type': 'ListItem',
+                  position: 2,
+                  name: 'Tools',
+                  item: `${getAppUrl()}/tools`,
+                },
+                {
+                  '@type': 'ListItem',
+                  position: 3,
+                  name: title,
+                  item: url,
+                },
+              ],
+            }),
+          }}
+        />
+
+        <nav aria-label="Breadcrumb" className="mb-4 text-sm text-[var(--color-muted)]">
+          <ol className="flex flex-wrap items-center gap-1.5">
+            <li>
+              <Link href="/" className="hover:text-[var(--color-accent)]">
+                Home
+              </Link>
+            </li>
+            <li aria-hidden>/</li>
+            <li>
+              <Link href="/tools" className="hover:text-[var(--color-accent)]">
+                Tools
+              </Link>
+            </li>
+            <li aria-hidden>/</li>
+            <li className="font-medium text-[var(--color-ink)]" aria-current="page">
+              {title}
+            </li>
+          </ol>
+        </nav>
 
         <header className="max-w-2xl">
           <p className="text-xs font-bold uppercase tracking-wide text-[var(--color-accent)]">

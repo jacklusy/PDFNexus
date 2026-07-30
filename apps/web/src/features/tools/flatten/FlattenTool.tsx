@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
+import { DriveExportButton } from '@/features/cloud/DriveExportButton';
 import { ToolWorkbench } from '../ToolWorkbench';
 import { useToolHandoff } from '../useToolHandoff';
 import { FLATTEN_WARNING, flattenPdf, shouldRefuseFlattenDownload } from './flattenPdf';
@@ -15,6 +16,7 @@ export function FlattenTool() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const [lastPdf, setLastPdf] = useState<File | null>(null);
 
   const file = files[0]?.file;
 
@@ -38,10 +40,9 @@ export function FlattenTool() {
       }
 
       const name = file.name.replace(/\.pdf$/i, '') + '-flattened.pdf';
-      downloadBlobLocally(
-        new Blob([result.bytes], { type: 'application/pdf' }),
-        name
-      );
+      const blob = new Blob([result.bytes], { type: 'application/pdf' });
+      downloadBlobLocally(blob, name);
+      setLastPdf(new File([blob], name, { type: 'application/pdf' }));
       const parts = [
         result.formsFlattened ? 'forms' : null,
         result.annotationsFlattened ? 'annotations' : null,
@@ -56,6 +57,7 @@ export function FlattenTool() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setProgress(null);
+      setLastPdf(null);
     } finally {
       setBusy(false);
     }
@@ -72,6 +74,7 @@ export function FlattenTool() {
         setAllowPartial(false);
         setError(null);
         setProgress(null);
+        setLastPdf(null);
       }}
       busy={busy}
       footer={
@@ -127,6 +130,8 @@ export function FlattenTool() {
           {error}
         </p>
       ) : null}
+
+      {lastPdf ? <DriveExportButton file={lastPdf} disabled={busy} /> : null}
     </ToolWorkbench>
   );
 }

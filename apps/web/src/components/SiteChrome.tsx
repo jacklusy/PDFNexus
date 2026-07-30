@@ -9,7 +9,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 
 const links = [
   { href: '/workspace', label: 'Workspace' },
-  { href: '/split-pdf', label: 'Tools' },
+  { href: '/tools', label: 'Tools' },
   { href: '/guide', label: 'Guide' },
   { href: '/about', label: 'About' },
   { href: '/feedback', label: 'Feedback' },

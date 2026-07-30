@@ -4,8 +4,10 @@ import React, { useState } from 'react';
 import { AlertTriangle, Server } from 'lucide-react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
+import { DriveExportButton } from '@/features/cloud/DriveExportButton';
 import { ApiError, apiFetch } from '@/lib/api';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolError } from '../ToolError';
 import {
   canUploadOfficeForConversion,
   OFFICE_MAX_BYTES,
@@ -27,6 +29,7 @@ export function OfficeToPdfTool() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const [lastPdf, setLastPdf] = useState<File | null>(null);
 
   const file = files[0]?.file;
 
@@ -56,10 +59,10 @@ export function OfficeToPdfTool() {
         body: form,
       });
       const name = file.name.replace(/\.(docx|xlsx|pptx)$/i, '') + '.pdf';
-      downloadBlobLocally(
-        blob instanceof Blob ? blob : new Blob([blob], { type: 'application/pdf' }),
-        name
-      );
+      const pdfBlob =
+        blob instanceof Blob ? blob : new Blob([blob], { type: 'application/pdf' });
+      downloadBlobLocally(pdfBlob, name);
+      setLastPdf(new File([pdfBlob], name, { type: 'application/pdf' }));
       setProgress('Downloaded PDF');
     } catch (e) {
       if (e instanceof ApiError) {
@@ -68,6 +71,7 @@ export function OfficeToPdfTool() {
         setError(e instanceof Error ? e.message : String(e));
       }
       setProgress(null);
+      setLastPdf(null);
     } finally {
       setBusy(false);
     }
@@ -84,9 +88,11 @@ export function OfficeToPdfTool() {
         setConsent(false);
         setError(null);
         setProgress(null);
+        setLastPdf(null);
       }}
       busy={busy}
       badgeLabel="Server conversion"
+      processingMode="server"
       dropLabel="Drop a DOCX, XLSX, or PPTX here"
       dropHint="Requires explicit consent — file is uploaded only after you agree"
       pickerLabel="Choose Office file"
@@ -149,10 +155,17 @@ export function OfficeToPdfTool() {
 
       {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
       {error ? (
-        <p className="text-sm text-[var(--color-danger)]" role="alert">
-          {error}
-        </p>
+        <ToolError
+          message={error}
+          fileName={file?.name}
+          cloudNote="Conversion runs on the server after consent. Your original Office file stays on this device."
+          onRetry={() => {
+            setError(null);
+          }}
+        />
       ) : null}
+
+      {lastPdf ? <DriveExportButton file={lastPdf} disabled={busy} /> : null}
     </ToolWorkbench>
   );
 }
