@@ -5,7 +5,7 @@ import {
   isEncryptedPayload,
 } from './token-crypto';
 import { oauthCallbackSessionMatches } from './oauth-callback-guard';
-import { isPdfUpload, isCloudPdfMeta, isCloudTokenConnected, MAX_CLOUD_FILE_BYTES } from './cloud-constants';
+import { isPdfUpload, isCloudPdfMeta, isCloudTokenConnected, isPdfMagic, isUnderOneDriveApproot, dropboxAppFolderUploadPath, readCloudBodyCapped, MAX_CLOUD_FILE_BYTES } from './cloud-constants';
 import {
   deserializeCloudTokenRecord,
   serializeCloudTokenRecord,
@@ -35,6 +35,13 @@ describe('oauthCallbackSessionMatches', () => {
     expect(
       oauthCallbackSessionMatches('abc123456789012345', 'abc123456789012345'),
     ).toBe(true);
+  });
+
+  it('rejects unequal length and short cookies', () => {
+    expect(oauthCallbackSessionMatches('short', 'abc123456789012345')).toBe(false);
+    expect(
+      oauthCallbackSessionMatches('abc12345678901234x', 'abc123456789012345'),
+    ).toBe(false);
   });
 });
 
@@ -81,6 +88,55 @@ describe('cloud PDF + size gates', () => {
       }),
     ).toBe(false);
     expect(isCloudTokenConnected({ accessToken: 'a' })).toBe(false);
+  });
+
+  it('requires %PDF- magic bytes', () => {
+    expect(isPdfMagic(Buffer.from('%PDF-1.7\n'))).toBe(true);
+    expect(isPdfMagic(Buffer.from('not a pdf'))).toBe(false);
+    expect(isPdfMagic(Buffer.from('%PD'))).toBe(false);
+  });
+
+  it('approot path uses segment-safe marker', () => {
+    expect(
+      isUnderOneDriveApproot({
+        approotId: 'root',
+        parentId: 'root',
+      }),
+    ).toBe(true);
+    expect(
+      isUnderOneDriveApproot({
+        approotName: 'MyApp',
+        parentPath: '/drive/root:/Apps/MyApp/docs',
+      }),
+    ).toBe(true);
+    expect(
+      isUnderOneDriveApproot({
+        approotName: 'MyApp',
+        parentPath: '/drive/root:/Apps/MyAppExtra/x',
+      }),
+    ).toBe(false);
+  });
+
+  it('dropbox upload path is basename-only', () => {
+    expect(dropboxAppFolderUploadPath('../evil.pdf')).toBe('/evil.pdf');
+    expect(dropboxAppFolderUploadPath('a/b/c.pdf')).toBe('/c.pdf');
+  });
+
+  it('readCloudBodyCapped rejects oversized Content-Length', async () => {
+    const res = new Response(null, {
+      status: 200,
+      headers: { 'content-length': String(MAX_CLOUD_FILE_BYTES + 1) },
+    });
+    await expect(readCloudBodyCapped(res, MAX_CLOUD_FILE_BYTES)).rejects.toMatchObject({
+      code: 'TOO_LARGE',
+    });
+  });
+
+  it('readCloudBodyCapped accepts small body', async () => {
+    const body = Buffer.from('%PDF-1.4 tiny');
+    const res = new Response(body, { status: 200 });
+    const buf = await readCloudBodyCapped(res, MAX_CLOUD_FILE_BYTES);
+    expect(buf.equals(body)).toBe(true);
   });
 });
 

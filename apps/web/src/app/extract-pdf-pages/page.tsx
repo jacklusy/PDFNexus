@@ -18,8 +18,8 @@ export default function Page() {
       path="/extract-pdf-pages"
       howItWorks={[
         'Upload the PDF containing the pages you want.',
-        'Enter page numbers or ranges (for example, 1-3, 5, 10-12).',
-        'Extract and download a new PDF with only those pages.',
+        'Click pages to select them, enter ranges (for example 1-3, 5), and optionally reorder the selection list.',
+        'Extract and download a new PDF in selection order.',
       ]}
       privacyNote="This tool runs in your browser. Your file is not uploaded to process it."
       limits={[

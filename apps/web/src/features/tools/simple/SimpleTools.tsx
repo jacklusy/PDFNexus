@@ -13,19 +13,24 @@ export function MergeTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorFileName, setErrorFileName] = useState<string | undefined>();
   const [progress, setProgress] = useState<string | null>(null);
 
   const run = async () => {
     if (files.length < 2) {
       setError('Add at least two PDFs to merge.');
+      setErrorFileName(undefined);
       return;
     }
     setBusy(true);
     setError(null);
+    setErrorFileName(undefined);
     setProgress('Merging…');
+    let activeName: string | undefined;
     try {
       const out = await PDFDocument.create();
       for (let i = 0; i < files.length; i++) {
+        activeName = files[i].name;
         setProgress(`Merging ${i + 1}/${files.length}…`);
         const bytes = await files[i].file.arrayBuffer();
         const src = await loadReadablePdf(bytes);
@@ -40,6 +45,7 @@ export function MergeTool() {
       setProgress('Downloaded merged.pdf');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      setErrorFileName(activeName);
       setProgress(null);
     } finally {
       setBusy(false);
@@ -70,8 +76,12 @@ export function MergeTool() {
       {error ? (
         <ToolError
           message={error}
-          fileName={files[0]?.name}
-          onRetry={() => setError(null)}
+          fileName={errorFileName}
+          onRetry={() => {
+            setError(null);
+            setErrorFileName(undefined);
+            void run();
+          }}
         />
       ) : null}
     </ToolWorkbench>
@@ -145,7 +155,14 @@ export function RotateTool() {
         ))}
       </div>
       {error ? (
-        <ToolError message={error} fileName={file?.name} onRetry={() => setError(null)} />
+        <ToolError
+          message={error}
+          fileName={file?.name}
+          onRetry={() => {
+            setError(null);
+            void run();
+          }}
+        />
       ) : null}
     </ToolWorkbench>
   );
@@ -155,14 +172,18 @@ export function JpgToPdfTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorFileName, setErrorFileName] = useState<string | undefined>();
 
   const run = async () => {
     if (!files.length) return;
     setBusy(true);
     setError(null);
+    setErrorFileName(undefined);
+    let activeName: string | undefined;
     try {
       const out = await PDFDocument.create();
       for (const f of files) {
+        activeName = f.name;
         const bytes = await f.file.arrayBuffer();
         const type = f.file.type.toLowerCase();
         let img;
@@ -178,6 +199,7 @@ export function JpgToPdfTool() {
       downloadBlobLocally(new Blob([saved], { type: 'application/pdf' }), 'images.pdf');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      setErrorFileName(activeName);
     } finally {
       setBusy(false);
     }
@@ -207,8 +229,12 @@ export function JpgToPdfTool() {
       {error ? (
         <ToolError
           message={error}
-          fileName={files[0]?.name}
-          onRetry={() => setError(null)}
+          fileName={errorFileName}
+          onRetry={() => {
+            setError(null);
+            setErrorFileName(undefined);
+            void run();
+          }}
         />
       ) : null}
     </ToolWorkbench>

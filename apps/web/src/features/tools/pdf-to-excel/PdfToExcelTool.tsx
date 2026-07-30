@@ -239,7 +239,7 @@ export function PdfToExcelTool() {
               ? 'If OCR ran, page images may have been sent after consent. Your original PDF is unchanged.'
               : undefined
           }
-          onRetry={() => setError(null)}
+          onRetry={() => { setError(null); void runOcrDetect(); }}
         />
       ) : null}
     </ToolWorkbench>

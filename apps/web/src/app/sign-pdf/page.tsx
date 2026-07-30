@@ -45,7 +45,7 @@ export default function Page() {
         },
       ]}
       related={[
-        { href: '/edit-pdf', label: 'Edit PDF' },
+        { href: '/edit-pdf', label: 'Add text & shapes' },
         { href: '/watermark-pdf', label: 'Watermark PDF' },
         { href: '/protect-pdf', label: 'Protect PDF' },
       ]}

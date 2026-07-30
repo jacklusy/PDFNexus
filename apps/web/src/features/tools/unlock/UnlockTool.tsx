@@ -109,9 +109,7 @@ export function UnlockTool() {
         <ToolError
           message={error}
           fileName={file?.name}
-          onRetry={() => {
-            setError(null);
-          }}
+          onRetry={() => { setError(null); void run(); }}
         />
       ) : null}
     </ToolWorkbench>

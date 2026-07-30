@@ -161,6 +161,7 @@ export function OfficeToPdfTool() {
           cloudNote="Conversion runs on the server after consent. Your original Office file stays on this device."
           onRetry={() => {
             setError(null);
+            void run();
           }}
         />
       ) : null}

@@ -359,7 +359,7 @@ export function AnnotateTool() {
         </aside>
 
         {error ? (
-        <ToolError message={error} fileName={file?.name} onRetry={() => setError(null)} />
+        <ToolError message={error} fileName={file?.name} onRetry={() => { setError(null); void exportFlattened(); }} />
       ) : null}
         {progress ? (
           <p className="text-sm text-[var(--color-muted)]" aria-live="polite">

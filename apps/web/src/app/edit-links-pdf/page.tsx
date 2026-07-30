@@ -41,7 +41,7 @@ export default function Page() {
       ]}
       related={[
         { href: '/annotate-pdf', label: 'Annotate PDF' },
-        { href: '/edit-pdf', label: 'Edit PDF' },
+        { href: '/edit-pdf', label: 'Add text & shapes' },
         { href: '/watermark-pdf', label: 'Watermark PDF' },
       ]}
     >

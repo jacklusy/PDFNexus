@@ -9,9 +9,12 @@ import { randomBytes } from 'crypto';
 import { ErrorCodes } from '@pdfnexus/shared';
 import {
   MAX_CLOUD_FILE_BYTES,
+  dropboxAppFolderUploadPath,
   isCloudPdfMeta,
   isCloudTokenConnected,
+  isPdfMagic,
   isPdfUpload,
+  readCloudBodyCapped,
 } from './cloud-constants';
 import { CloudTokenStore } from './cloud-token-store';
 
@@ -150,7 +153,7 @@ export class DropboxOAuthService {
     ) {
       return record.accessToken;
     }
-    if (!record.refreshToken) return record.accessToken || null;
+    if (!record.refreshToken) return null;
 
     const body = new URLSearchParams({
       grant_type: 'refresh_token',
@@ -332,15 +335,30 @@ export class DropboxService {
         code: 'DROPBOX_REQUEST_FAILED',
       });
     }
-    const ab = await res.arrayBuffer();
-    if (ab.byteLength > MAX_CLOUD_FILE_BYTES) {
+    let buffer: Buffer;
+    try {
+      buffer = await readCloudBodyCapped(res, MAX_CLOUD_FILE_BYTES);
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === 'TOO_LARGE') {
+        throw new BadRequestException({
+          error: 'File exceeds the 50MB cloud import limit',
+          code: ErrorCodes.FILE_TOO_LARGE,
+        });
+      }
       throw new BadRequestException({
-        error: 'File exceeds the 50MB cloud import limit',
-        code: ErrorCodes.FILE_TOO_LARGE,
+        error: 'Invalid or empty Dropbox file',
+        code: ErrorCodes.FILE_INVALID,
+      });
+    }
+    if (!isPdfMagic(buffer)) {
+      throw new BadRequestException({
+        error: 'Only PDF files can be imported from Dropbox',
+        code: ErrorCodes.FILE_INVALID,
       });
     }
     return {
-      buffer: Buffer.from(ab),
+      buffer,
       name: meta.name || 'document.pdf',
       mimeType: 'application/pdf',
     };
@@ -359,15 +377,14 @@ export class DropboxService {
         code: ErrorCodes.FILE_TOO_LARGE,
       });
     }
-    if (!isPdfUpload(file)) {
+    if (!isPdfUpload(file) || !isPdfMagic(file.buffer)) {
       throw new BadRequestException({
         error: 'Only PDF files can be exported to Dropbox',
         code: ErrorCodes.FILE_INVALID,
       });
     }
     const token = await this.requireToken(sessionId);
-    const name = file.originalname || 'document.pdf';
-    const path = `/${name.replace(/^\/+/, '')}`;
+    const path = dropboxAppFolderUploadPath(file.originalname);
     const res = await fetch('https://content.dropboxapi.com/2/files/upload', {
       method: 'POST',
       headers: {
@@ -395,7 +412,7 @@ export class DropboxService {
     };
     return {
       id: json.id || '',
-      name: json.name || name,
+      name: json.name || path.slice(1),
       webViewLink: json.path_display || path,
     };
   }

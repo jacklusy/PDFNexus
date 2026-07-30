@@ -344,7 +344,7 @@ export function RedactTool() {
         <ToolError
           message={error}
           fileName={files[0]?.name}
-          onRetry={() => setError(null)}
+          onRetry={() => { setError(null); void apply(); }}
         />
       ) : null}
     </ToolWorkbench>

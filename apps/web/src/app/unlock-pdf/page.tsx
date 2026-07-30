@@ -46,7 +46,7 @@ export default function Page() {
       ]}
       related={[
         { href: '/protect-pdf', label: 'Protect PDF' },
-        { href: '/edit-pdf', label: 'Edit PDF' },
+        { href: '/edit-pdf', label: 'Add text & shapes' },
         { href: '/extract-pdf-pages', label: 'Extract pages' },
       ]}
     >

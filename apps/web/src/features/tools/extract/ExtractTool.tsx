@@ -117,7 +117,7 @@ export function ExtractTool() {
   return (
     <ToolWorkbench
       title="Extract pages"
-      description="Pick pages and export a new PDF. Order is preserved."
+      description="Pick pages and export a new PDF. Export order follows the selection list (reorder with ↑/↓)."
       files={files}
       onFilesChange={setFiles}
       busy={busy}
@@ -268,7 +268,7 @@ export function ExtractTool() {
 
       {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
       {error ? (
-        <ToolError message={error} fileName={file?.name} onRetry={() => setError(null)} />
+        <ToolError message={error} fileName={file?.name} onRetry={() => { setError(null); void run(); }} />
       ) : null}
     </ToolWorkbench>
   );

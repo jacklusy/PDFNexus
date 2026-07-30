@@ -22,6 +22,7 @@ export function CertSignTool() {
   const [confirmAppearance, setConfirmAppearance] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorFileName, setErrorFileName] = useState<string | undefined>();
   const [progress, setProgress] = useState<string | null>(null);
   const p12InputId = useId();
   const p12Ref = useRef<HTMLInputElement>(null);
@@ -38,6 +39,7 @@ export function CertSignTool() {
     if (!file || !p12File || !confirmAppearance) return;
     setBusy(true);
     setError(null);
+    setErrorFileName(undefined);
     setProgress('Reading certificate…');
     let pwd = password;
     try {
@@ -60,7 +62,12 @@ export function CertSignTool() {
         `Downloaded (CN: ${result.commonName}). ${CERT_SIGN_EXPERIMENTAL_NOTICE}`
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      const p12ish =
+        /password|pkcs|p12|pfx|certificate|cert/i.test(msg) ||
+        msg.toLowerCase().includes('wrong');
+      setErrorFileName(p12ish ? p12File.name : file.name);
       setProgress(null);
     } finally {
       clearPassword(pwd);
@@ -191,8 +198,12 @@ export function CertSignTool() {
       {error ? (
         <ToolError
           message={error}
-          fileName={file?.name}
-          onRetry={() => setError(null)}
+          fileName={errorFileName}
+          onRetry={() => {
+            setError(null);
+            setErrorFileName(undefined);
+            void run();
+          }}
         />
       ) : null}
     </ToolWorkbench>

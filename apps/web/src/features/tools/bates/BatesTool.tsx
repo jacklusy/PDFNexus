@@ -49,6 +49,7 @@ export function BatesTool() {
   const [align, setAlign] = useState<BatesAlign>('right');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorFileName, setErrorFileName] = useState<string | undefined>();
   const [progress, setProgress] = useState<string | null>(null);
   const [progressCurrent, setProgressCurrent] = useState(0);
   const [progressTotal, setProgressTotal] = useState(0);
@@ -94,11 +95,13 @@ export function BatesTool() {
     cancelledRef.current = false;
     setBusy(true);
     setError(null);
+    setErrorFileName(undefined);
     setProgress('Applying Bates numbers…');
     setProgressCurrent(0);
     setProgressTotal(0);
     setFileCurrent(0);
     setFileTotal(files.length);
+    let activeName: string | undefined;
     try {
       let next = start;
       const outputs: Array<{ fileName: string; blob: Blob }> = [];
@@ -106,6 +109,7 @@ export function BatesTool() {
       for (let i = 0; i < files.length; i++) {
         if (cancelledRef.current) throw new Error('Cancelled');
         const file = files[i].file;
+        activeName = file.name;
         setFileCurrent(i + 1);
         setProgress(`File ${i + 1}/${files.length}: ${file.name}`);
         const buf = await file.arrayBuffer();
@@ -165,8 +169,10 @@ export function BatesTool() {
       if (msg === 'Cancelled') {
         setProgress(null);
         setError(null);
+        setErrorFileName(undefined);
       } else {
         setError(msg);
+        setErrorFileName(activeName);
         setProgress(null);
       }
       setProgressCurrent(0);
@@ -326,8 +332,12 @@ export function BatesTool() {
       {error ? (
         <ToolError
           message={error}
-          fileName={files[0]?.name}
-          onRetry={() => setError(null)}
+          fileName={errorFileName}
+          onRetry={() => {
+            setError(null);
+            setErrorFileName(undefined);
+            void run();
+          }}
         />
       ) : null}
     </ToolWorkbench>

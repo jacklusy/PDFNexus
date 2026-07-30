@@ -34,15 +34,15 @@ export default function Page() {
             'Yes. Flattening burns field appearances into page content so values stay visible but are no longer editable fields.',
         },
         {
-          question: 'Is this the same as flattening annotation overlays from Edit PDF?',
+          question: 'Is this the same as flattening annotation overlays from Add text & shapes?',
           answer:
-            'Related idea, different scope. This tool targets AcroForm fields and native annotations; overlay tools burn their own stamps into content.',
+            'Related idea, different scope. This tool targets AcroForm fields and native annotations; Add text & shapes burns its own overlay stamps into content.',
         },
       ]}
       related={[
         { href: '/protect-pdf', label: 'Protect PDF' },
         { href: '/annotate-pdf', label: 'Annotate PDF' },
-        { href: '/edit-pdf', label: 'Edit PDF' },
+        { href: '/edit-pdf', label: 'Add text & shapes' },
       ]}
     >
       <FlattenTool />

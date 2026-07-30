@@ -1,4 +1,4 @@
-# PDFNexus — Platform status (Phases 5–10)
+# PDFNexus — Platform status (Phases 5–11)
 
 **No healthcare or legal compliance claims.** Browser/a11y rows below are a **manual QA checklist**, not a claim that every cell was validated in CI.
 
@@ -63,13 +63,23 @@ Local downloads remain ungated. Email verification is optional delivery only.
 - Architecture + PHASE3 a11y checklist updated (Office→PDF / cert-sign no longer “coming soon”)
 - Cert-sign how-it-works: PEM / `.p7s` as **attachments**, not separate downloads
 
+## Phase 11 (review harden)
+
+- Cloud import: capped body reader (no unbounded `arrayBuffer`); `%PDF-` magic on import/export
+- Expired access without refresh → `null` (Dropbox/OneDrive aligned with Google)
+- OneDrive disconnect: clear-local only (no fake logout revoke); segment-safe approot path
+- Dropbox export: basename-only upload path
+- `ToolError` Retry re-runs the action; Bates/Merge/JPG track failing file; cert-sign uses p12 name when appropriate
+- `extractPdf` unit tests; related-link “Edit PDF” → “Add text & shapes”
+- Cancel during pre-worker `arrayBuffer()` remains a known limit (same as Split)
+
 ## §19 Performance notes (templates / known limits)
 
 Numbers below are **design limits and patterns**, not measured CI benchmarks collected in-repo.
 
 - Prefer local tools; workers for structural compress / split / extract where wired
 - Raster JPEG compress and PDF→images use main-thread canvas (cleared after encode)
-- Cloud imports/exports capped at **50MB**
+- Cloud imports/exports capped at **50MB** (enforced while reading the response body)
 - Batch cancel stops before the next pending job (not mid-runner AbortSignal)
 
 ## §20 Browser / device matrix (manual QA — not CI-validated)

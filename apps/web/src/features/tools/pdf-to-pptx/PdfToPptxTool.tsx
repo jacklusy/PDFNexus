@@ -173,7 +173,7 @@ export function PdfToPptxTool() {
         <p className="text-sm text-[var(--color-muted)]">{progress}</p>
       ) : null}
       {error ? (
-        <ToolError message={error} fileName={file?.name} onRetry={() => setError(null)} />
+        <ToolError message={error} fileName={file?.name} onRetry={() => { setError(null); void run(); }} />
       ) : null}
     </ToolWorkbench>
   );

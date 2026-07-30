@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { ErrorCodes } from '@pdfnexus/shared';
-import { MAX_CLOUD_FILE_BYTES, isCloudPdfMeta, isCloudTokenConnected, isPdfUpload } from './cloud-constants';
+import { MAX_CLOUD_FILE_BYTES, isCloudPdfMeta, isCloudTokenConnected, isPdfMagic, isPdfUpload, isUnderOneDriveApproot, readCloudBodyCapped } from './cloud-constants';
 import { CloudTokenStore } from './cloud-token-store';
 
 const PROVIDER = 'onedrive';
@@ -126,23 +126,11 @@ export class OneDriveOAuthService {
   }
 
   /**
-   * Best-effort Microsoft token cleanup. Azure AD has no RFC 7009 revoke for
-   * delegated refresh tokens; we clear local storage and soft-fail any network attempt.
+   * Microsoft identity has no RFC 7009 revoke for delegated refresh tokens.
+   * Disconnect clears Redis only; this no-op exists for API symmetry with Google/Dropbox.
    */
-  async revokeAccess(sessionId: string): Promise<void> {
-    try {
-      const token = await this.getAccessToken(sessionId);
-      if (!token) return;
-      await fetch(
-        `https://login.microsoftonline.com/${this.tenant}/oauth2/v2.0/logout`,
-        {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-    } catch {
-      /* fail soft */
-    }
+  async revokeAccess(_sessionId: string): Promise<void> {
+    /* clear-local-only — no provider revoke endpoint for confidential delegated tokens */
   }
 
   async getAccessToken(sessionId: string): Promise<string | null> {
@@ -156,7 +144,7 @@ export class OneDriveOAuthService {
     ) {
       return record.accessToken;
     }
-    if (!record.refreshToken) return record.accessToken || null;
+    if (!record.refreshToken) return null;
 
     const body = new URLSearchParams({
       grant_type: 'refresh_token',
@@ -285,15 +273,13 @@ export class OneDriveService {
     };
     const approot = (await approotRes.json()) as { id?: string; name?: string };
 
-    // Defense-in-depth: only import items whose parent is the app folder root
-    // (matches non-recursive listPdfFiles) or whose path is under /Apps/{app}.
-    const underApproot =
-      Boolean(approot.id) &&
-      (meta.parentReference?.id === approot.id ||
-        (approot.name != null &&
-          Boolean(
-            meta.parentReference?.path?.includes(`/Apps/${approot.name}`),
-          )));
+    // Defense-in-depth: parent is approot, or path under /Apps/{name}/ (segment-safe).
+    const underApproot = isUnderOneDriveApproot({
+      approotId: approot.id,
+      approotName: approot.name,
+      parentId: meta.parentReference?.id,
+      parentPath: meta.parentReference?.path,
+    });
     if (!underApproot) {
       throw new BadRequestException({
         error: 'Only files in the OneDrive app folder can be imported',
@@ -329,15 +315,30 @@ export class OneDriveService {
         code: 'ONEDRIVE_REQUEST_FAILED',
       });
     }
-    const ab = await contentRes.arrayBuffer();
-    if (ab.byteLength > MAX_CLOUD_FILE_BYTES) {
+    let buffer: Buffer;
+    try {
+      buffer = await readCloudBodyCapped(contentRes, MAX_CLOUD_FILE_BYTES);
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === 'TOO_LARGE') {
+        throw new BadRequestException({
+          error: 'File exceeds the 50MB cloud import limit',
+          code: ErrorCodes.FILE_TOO_LARGE,
+        });
+      }
       throw new BadRequestException({
-        error: 'File exceeds the 50MB cloud import limit',
-        code: ErrorCodes.FILE_TOO_LARGE,
+        error: 'Invalid or empty OneDrive file',
+        code: ErrorCodes.FILE_INVALID,
+      });
+    }
+    if (!isPdfMagic(buffer)) {
+      throw new BadRequestException({
+        error: 'Only PDF files can be imported from OneDrive',
+        code: ErrorCodes.FILE_INVALID,
       });
     }
     return {
-      buffer: Buffer.from(ab),
+      buffer,
       name: meta.name || 'document.pdf',
       mimeType: 'application/pdf',
     };
@@ -356,7 +357,7 @@ export class OneDriveService {
         code: ErrorCodes.FILE_TOO_LARGE,
       });
     }
-    if (!isPdfUpload(file)) {
+    if (!isPdfUpload(file) || !isPdfMagic(file.buffer)) {
       throw new BadRequestException({
         error: 'Only PDF files can be exported to OneDrive',
         code: ErrorCodes.FILE_INVALID,

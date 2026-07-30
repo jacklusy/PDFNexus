@@ -40,7 +40,7 @@ export default function Page() {
         },
       ]}
       related={[
-        { href: '/edit-pdf', label: 'Edit PDF' },
+        { href: '/edit-pdf', label: 'Add text & shapes' },
         { href: '/edit-links-pdf', label: 'Edit links' },
         { href: '/flatten-pdf', label: 'Flatten PDF' },
       ]}

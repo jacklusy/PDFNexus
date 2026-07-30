@@ -11,7 +11,9 @@ import {
   MAX_CLOUD_FILE_BYTES,
   isCloudPdfMeta,
   isCloudTokenConnected,
+  isPdfMagic,
   isPdfUpload,
+  readCloudBodyCapped,
 } from './cloud-constants';
 
 export { MAX_CLOUD_FILE_BYTES };
@@ -141,16 +143,31 @@ export class DriveService {
       throw await this.driveError(contentRes, 'Failed to download Drive file');
     }
 
-    const ab = await contentRes.arrayBuffer();
-    if (ab.byteLength > MAX_DRIVE_FILE_BYTES) {
+    let buffer: Buffer;
+    try {
+      buffer = await readCloudBodyCapped(contentRes, MAX_DRIVE_FILE_BYTES);
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === 'TOO_LARGE') {
+        throw new BadRequestException({
+          error: 'File exceeds the 50MB Drive import limit',
+          code: ErrorCodes.FILE_TOO_LARGE,
+        });
+      }
       throw new BadRequestException({
-        error: 'File exceeds the 50MB Drive import limit',
-        code: ErrorCodes.FILE_TOO_LARGE,
+        error: 'Invalid or empty Drive file',
+        code: ErrorCodes.FILE_INVALID,
+      });
+    }
+    if (!isPdfMagic(buffer)) {
+      throw new BadRequestException({
+        error: 'Only PDF files can be imported from Drive',
+        code: ErrorCodes.FILE_INVALID,
       });
     }
 
     return {
-      buffer: Buffer.from(ab),
+      buffer,
       name: meta.name || 'document.pdf',
       mimeType: meta.mimeType || 'application/pdf',
     };
@@ -173,7 +190,7 @@ export class DriveService {
       });
     }
 
-    if (!isPdfUpload(file)) {
+    if (!isPdfUpload(file) || !isPdfMagic(file.buffer)) {
       throw new BadRequestException({
         error: 'Only PDF files can be exported to Drive',
         code: ErrorCodes.FILE_INVALID,
