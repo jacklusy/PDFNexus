@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PROCESSING_MODE_BADGE,
   badgeForProcessingMode,
+  defaultDropHint,
   defaultPrivacyNote,
 } from './processingMode';
 
@@ -22,5 +23,11 @@ describe('processingMode', () => {
     expect(defaultPrivacyNote('server')).toMatch(/uploads/i);
     expect(defaultPrivacyNote('cloud_assisted')).toMatch(/uploads/i);
     expect(defaultPrivacyNote('local')).toMatch(/never leaves/i);
+  });
+
+  it('derives drop hints from processing mode', () => {
+    expect(defaultDropHint('local')).toMatch(/browser/i);
+    expect(defaultDropHint('server')).toMatch(/conversion server/i);
+    expect(defaultDropHint('cloud_assisted')).toMatch(/consent/i);
   });
 });

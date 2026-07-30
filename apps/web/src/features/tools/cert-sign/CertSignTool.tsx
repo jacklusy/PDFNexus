@@ -108,9 +108,10 @@ export function CertSignTool() {
               Sign PDF
             </Link>{' '}
             adds a visual electronic stamp only. This tool parses a real PKCS#12
-            certificate and stamps CN + date, attaches <code>signer.pem</code>, and
-            sets experimental metadata. It does <strong>not</strong> produce a
-            validated CMS / Adobe digital signature yet.
+            certificate and stamps CN + date, attaches <code>signer.pem</code> and a
+            detached <code>.p7s</code> when the private key is present, and sets
+            experimental metadata. It does <strong>not</strong> embed ISO 32000
+            /ByteRange CMS — Adobe Reader will not show a validated signature.
           </p>
           <p className="text-[var(--color-muted)]">{CERT_SIGN_EXPERIMENTAL_NOTICE}</p>
         </div>

@@ -82,8 +82,13 @@ export function retry(queue: BatchQueue, jobId: string): BatchQueue {
  */
 export async function runNext(
   queue: BatchQueue,
-  runners: Partial<Record<BatchTool, BatchRunner>>
+  runners: Partial<Record<BatchTool, BatchRunner>>,
+  signal?: AbortSignal
 ): Promise<BatchQueue> {
+  if (signal?.aborted) {
+    throw new DOMException('Batch cancelled', 'AbortError');
+  }
+
   const idx = queue.jobs.findIndex((j) => j.status === 'pending');
   if (idx < 0) return queue;
 
@@ -99,7 +104,13 @@ export async function runNext(
     if (!runner) {
       throw new Error(`No runner registered for tool "${job.tool}".`);
     }
+    if (signal?.aborted) {
+      throw new DOMException('Batch cancelled', 'AbortError');
+    }
     const resultBlob = await runner(running.jobs[idx]);
+    if (signal?.aborted) {
+      throw new DOMException('Batch cancelled', 'AbortError');
+    }
     running = {
       jobs: running.jobs.map((j, i) =>
         i === idx
@@ -108,13 +119,28 @@ export async function runNext(
       ),
     };
   } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      running = {
+        jobs: running.jobs.map((j, i) =>
+          i === idx
+            ? {
+                ...j,
+                status: 'pending' as const,
+                error: undefined,
+                resultBlob: undefined,
+              }
+            : j
+        ),
+      };
+      clearAllPdfCaches();
+      throw e;
+    }
     const message = e instanceof Error ? e.message : String(e);
     running = {
       jobs: running.jobs.map((j, i) =>
         i === idx ? { ...j, status: 'failed' as const, error: message } : j
       ),
     };
-  } finally {
     clearAllPdfCaches();
   }
 
@@ -125,11 +151,15 @@ export async function runNext(
 export async function runAll(
   queue: BatchQueue,
   runners: Partial<Record<BatchTool, BatchRunner>>,
-  onUpdate?: (queue: BatchQueue) => void
+  onUpdate?: (queue: BatchQueue) => void,
+  signal?: AbortSignal
 ): Promise<BatchQueue> {
   let current = queue;
   while (current.jobs.some((j) => j.status === 'pending')) {
-    current = await runNext(current, runners);
+    if (signal?.aborted) {
+      throw new DOMException('Batch cancelled', 'AbortError');
+    }
+    current = await runNext(current, runners, signal);
     onUpdate?.(current);
   }
   return current;

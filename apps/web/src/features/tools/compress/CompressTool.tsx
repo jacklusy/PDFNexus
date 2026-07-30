@@ -16,6 +16,7 @@ import {
   type CompressPreset,
   type CompressResult,
 } from './compressPdf';
+import { runWorkerTask, WorkerCancelledError } from '../runInWorker';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 
 async function openPdfjsDoc(pdfBytes: ArrayBuffer): Promise<PDFDocumentProxy> {
@@ -51,8 +52,13 @@ async function renderPageJpegFromDoc(
       quality
     );
   });
+  const width = canvas.width;
+  const height = canvas.height;
+  // Release GPU/canvas memory promptly
+  canvas.width = 0;
+  canvas.height = 0;
   const buf = new Uint8Array(await blob.arrayBuffer());
-  return { jpeg: buf, width: canvas.width, height: canvas.height };
+  return { jpeg: buf, width, height };
 }
 
 export function CompressTool() {
@@ -70,6 +76,7 @@ export function CompressTool() {
   const [stats, setStats] = useState<CompressResult | null>(null);
   const pdfjsRef = useRef<PDFDocumentProxy | null>(null);
   const cancelledRef = useRef(false);
+  const cancelWorkerRef = useRef<(() => void) | null>(null);
   const { elapsedLabel } = useTimedProgress(busy);
 
   const file = files[0]?.file;
@@ -120,14 +127,59 @@ export function CompressTool() {
     let pdfjsDoc: PDFDocumentProxy | null = null;
     try {
       const bytes = await file.arrayBuffer();
-      if (rasterize) {
-        pdfjsDoc = await openPdfjsDoc(bytes);
-        pdfjsRef.current = pdfjsDoc;
+
+      // Structural path runs in a module worker; JPEG raster stays on main (canvas).
+      if (!rasterize) {
+        const { promise, cancel } = runWorkerTask<
+          { id: string; bytes: ArrayBuffer; settings: typeof settings },
+          {
+            bytes: ArrayBuffer;
+            originalSize: number;
+            finalSize: number;
+            reductionPercent: number;
+            elapsedMs: number;
+            settings: typeof settings;
+            imagesReencoded: number;
+          }
+        >({
+          workerUrl: new URL('./compress.worker.ts', import.meta.url),
+          request: { id: 'compress', bytes, settings },
+          transfer: [bytes],
+          onProgress: (c, t, msg) => {
+            setProgressCurrent(c);
+            setProgressTotal(t);
+            setProgress(msg || `${c}/${t}`);
+          },
+        });
+        cancelWorkerRef.current = cancel;
+        const workerResult = await promise;
+        const result: CompressResult = {
+          bytes: new Uint8Array(workerResult.bytes),
+          originalSize: workerResult.originalSize,
+          finalSize: workerResult.finalSize,
+          reductionPercent: workerResult.reductionPercent,
+          elapsedMs: workerResult.elapsedMs,
+          settings: workerResult.settings,
+          imagesReencoded: workerResult.imagesReencoded,
+        };
+        setStats(result);
+        const name = file.name.replace(/\.pdf$/i, '') + '-compressed.pdf';
+        downloadBlobLocally(
+          new Blob([result.bytes], { type: 'application/pdf' }),
+          name
+        );
+        setProgress('Downloaded');
+        setProgressCurrent(0);
+        setProgressTotal(0);
+        return;
       }
+
+      pdfjsDoc = await openPdfjsDoc(bytes);
+      pdfjsRef.current = pdfjsDoc;
       const result = await compressPdf({
         bytes,
         settings,
-        rasterizePages: rasterize,
+        rasterizePages: true,
         renderPage: async (pageIndex, maxPx, quality) => {
           if (cancelledRef.current) throw new Error('Cancelled');
           if (!pdfjsDoc) throw new Error('PDF.js document missing');
@@ -151,17 +203,17 @@ export function CompressTool() {
       setProgressCurrent(0);
       setProgressTotal(0);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg === 'Cancelled') {
+      if (e instanceof WorkerCancelledError || (e instanceof Error && e.message === 'Cancelled')) {
         setProgress(null);
         setError(null);
       } else {
-        setError(msg);
+        setError(e instanceof Error ? e.message : String(e));
         setProgress(null);
       }
       setProgressCurrent(0);
       setProgressTotal(0);
     } finally {
+      cancelWorkerRef.current = null;
       if (pdfjsDoc) {
         await pdfjsDoc.destroy().catch(() => undefined);
         pdfjsRef.current = null;
@@ -296,6 +348,7 @@ export function CompressTool() {
           elapsedLabel={elapsedLabel}
           onCancel={() => {
             cancelledRef.current = true;
+            cancelWorkerRef.current?.();
           }}
         />
       ) : progress && !busy ? (

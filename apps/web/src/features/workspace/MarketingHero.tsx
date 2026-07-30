@@ -55,8 +55,8 @@ export function MarketingHero() {
           transition={{ duration: 0.65, delay: 0.16 }}
           className="mt-4 max-w-xl text-base leading-relaxed text-teal-100/80 sm:text-lg"
         >
-          Reorder, rotate, and assemble pages locally — then verify your email only when you
-          download the final file.
+          Reorder, rotate, and assemble pages locally — finished PDFs download
+          immediately. Email verification and Drive are optional extras.
         </motion.p>
         <motion.div
           initial={{ opacity: 0, y: 18 }}

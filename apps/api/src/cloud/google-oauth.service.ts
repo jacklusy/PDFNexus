@@ -58,6 +58,19 @@ export class GoogleOAuthService {
     }
   }
 
+  /** Production must encrypt tokens at rest. */
+  assertEncryptionReady(): void {
+    const key = this.encryptionKey;
+    const isProd = this.config.get<string>('NODE_ENV') === 'production';
+    if (isProd && key.length < 32) {
+      throw new ServiceUnavailableException({
+        error:
+          'GOOGLE_TOKEN_ENCRYPTION_KEY (32+ chars) is required in production for Drive tokens.',
+        code: 'DRIVE_ENCRYPTION_REQUIRED',
+      });
+    }
+  }
+
   isConfigured(): boolean {
     return Boolean(this.clientId);
   }
@@ -162,6 +175,7 @@ export class GoogleOAuthService {
       expiresIn?: number;
     },
   ): Promise<void> {
+    this.assertEncryptionReady();
     const existing = await this.getTokenRecord(sessionId);
     const refresh =
       tokens.refreshToken || existing?.refreshToken || '';
@@ -259,22 +273,24 @@ export class GoogleOAuthService {
   }
 
   private serializeRecord(record: DriveTokenRecord): string {
+    this.assertEncryptionReady();
     const key = this.encryptionKey;
     let refreshToken = record.refreshToken;
-    if (refreshToken) {
-      if (key.length >= 32) {
-        refreshToken = encryptToken(refreshToken, key);
-      } else if (!this.warnedMissingKey) {
-        this.warnedMissingKey = true;
-        this.logger.warn(
-          'GOOGLE_TOKEN_ENCRYPTION_KEY missing or shorter than 32 chars — storing Drive refresh tokens unencrypted (dev only)',
-        );
-      }
+    let accessToken = record.accessToken;
+    if (key.length >= 32) {
+      if (refreshToken) refreshToken = encryptToken(refreshToken, key);
+      if (accessToken) accessToken = encryptToken(accessToken, key);
+    } else if (!this.warnedMissingKey) {
+      this.warnedMissingKey = true;
+      this.logger.warn(
+        'GOOGLE_TOKEN_ENCRYPTION_KEY missing or shorter than 32 chars — storing Drive tokens unencrypted (dev only)',
+      );
     }
 
     return JSON.stringify({
       ...record,
       refreshToken,
+      accessToken,
     });
   }
 
@@ -282,13 +298,19 @@ export class GoogleOAuthService {
     const parsed = JSON.parse(raw) as DriveTokenRecord;
     const key = this.encryptionKey;
     let refreshToken = parsed.refreshToken ?? '';
-    if (refreshToken && key.length >= 32) {
+    let accessToken = parsed.accessToken;
+    if (key.length >= 32) {
       try {
-        refreshToken = decryptToken(refreshToken, key);
+        if (refreshToken) refreshToken = decryptToken(refreshToken, key);
       } catch {
         // May be plaintext from before key was set
       }
+      try {
+        if (accessToken) accessToken = decryptToken(accessToken, key);
+      } catch {
+        // ignore
+      }
     }
-    return { ...parsed, refreshToken };
+    return { ...parsed, refreshToken, accessToken };
   }
 }

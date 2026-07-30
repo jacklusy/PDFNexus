@@ -21,6 +21,7 @@ import { pdfToImages } from '@/features/tools/pdf-to-images/pdfToImages';
 import { batesPdf } from '@/features/tools/bates/batesPdf';
 import { PAPER_SIZES_PT, cropPresetMargins } from '@/features/tools/pageGeometry';
 import { ToolProgress } from '@/features/tools/ToolProgress';
+import { ToolError } from '@/features/tools/ToolError';
 import { useTimedProgress } from '@/features/tools/useTimedProgress';
 import {
   clearProject,
@@ -342,9 +343,12 @@ export function BatchQueuePanel({ open, onClose }: BatchQueuePanelProps) {
   const [runStage, setRunStage] = useState<string | null>(null);
   const [runCurrent, setRunCurrent] = useState(0);
   const [runTotal, setRunTotal] = useState(0);
+  const [jobCurrent, setJobCurrent] = useState(0);
+  const [jobTotal, setJobTotal] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const protectPasswordRef = useRef('');
   const batesStartRef = useRef(toolSettings.batesStart);
+  const abortRef = useRef<AbortController | null>(null);
   const { elapsedLabel } = useTimedProgress(busy && !!runStage);
 
   useEffect(() => {
@@ -543,14 +547,31 @@ export function BatchQueuePanel({ open, onClose }: BatchQueuePanelProps) {
     setRunStage('Starting…');
     setRunCurrent(0);
     setRunTotal(0);
+    const pendingCount = queue.jobs.filter((j) => j.status === 'pending').length;
+    setJobCurrent(0);
+    setJobTotal(pendingCount);
+    const ac = new AbortController();
+    abortRef.current = ac;
     try {
-      const result = await runAll(queue, runners, (q) => {
-        setQueue({ ...q });
-        const running = q.jobs.find((j) => j.status === 'running');
-        if (running) {
-          setRunStage((prev) => prev || `${TOOL_LABELS[running.tool]}…`);
-        }
-      });
+      const result = await runAll(
+        queue,
+        runners,
+        (q) => {
+          setQueue({ ...q });
+          const doneOrFailed = q.jobs.filter(
+            (j) => j.status === 'done' || j.status === 'failed'
+          ).length;
+          const started =
+            q.jobs.filter((j) => j.status !== 'pending').length;
+          setJobCurrent(Math.min(started, pendingCount));
+          const running = q.jobs.find((j) => j.status === 'running');
+          if (running) {
+            setRunStage((prev) => prev || `${TOOL_LABELS[running.tool]}…`);
+          }
+          void doneOrFailed;
+        },
+        ac.signal
+      );
       setQueue(result);
       await persistSession(result);
       await persistSettings({
@@ -561,12 +582,19 @@ export function BatchQueuePanel({ open, onClose }: BatchQueuePanelProps) {
       const failed = result.jobs.filter((j) => j.status === 'failed').length;
       setMessage(`Batch finished: ${done} done, ${failed} failed.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        setMessage('Batch cancelled. Remaining jobs stay pending.');
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
+      abortRef.current = null;
       setBusy(false);
       setRunStage(null);
       setRunCurrent(0);
       setRunTotal(0);
+      setJobCurrent(0);
+      setJobTotal(0);
     }
   };
 
@@ -905,11 +933,21 @@ export function BatchQueuePanel({ open, onClose }: BatchQueuePanelProps) {
                   : runStage
               }
               percent={
-                runTotal > 0 ? Math.round((runCurrent / runTotal) * 100) : null
+                jobTotal > 0
+                  ? Math.round((jobCurrent / jobTotal) * 100)
+                  : runTotal > 0
+                    ? Math.round((runCurrent / runTotal) * 100)
+                    : null
               }
               currentPage={runTotal > 0 ? runCurrent : undefined}
               totalPages={runTotal > 0 ? runTotal : undefined}
+              currentFile={jobTotal > 0 ? Math.max(jobCurrent, 1) : undefined}
+              totalFiles={jobTotal > 0 ? jobTotal : undefined}
               elapsedLabel={elapsedLabel}
+              onCancel={() => {
+                abortRef.current?.abort();
+                setMessage('Cancelling after current job…');
+              }}
             />
           ) : null}
 
@@ -935,7 +973,9 @@ export function BatchQueuePanel({ open, onClose }: BatchQueuePanelProps) {
                         {TOOL_LABELS[job.tool] ?? job.tool} · {job.status}
                       </p>
                       {job.error ? (
-                        <p className="mt-0.5 text-[11px] text-red-600">{job.error}</p>
+                        <div className="mt-1">
+                          <ToolError message={job.error} fileName={job.fileName} />
+                        </div>
                       ) : null}
                     </div>
                     {job.status === 'failed' ? (
@@ -968,9 +1008,10 @@ export function BatchQueuePanel({ open, onClose }: BatchQueuePanelProps) {
 
           {message ? <p className="text-xs text-slate-600">{message}</p> : null}
           {error ? (
-            <p className="text-xs text-red-600" role="alert">
-              {error}
-            </p>
+            <ToolError
+              message={error}
+              onRetry={() => setError(null)}
+            />
           ) : null}
         </div>
 

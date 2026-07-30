@@ -119,7 +119,7 @@ export function PrivacyIllustration({ className }: { className?: string }) {
       viewBox="0 0 320 200"
       className={className}
       role="img"
-      aria-label="Local processing stays on your device until you verify email"
+      aria-label="Local processing stays on your device; optional cloud delivery"
     >
       <rect width="320" height="200" rx="20" fill="var(--color-surface-2)" />
       <rect x="36" y="40" width="120" height="120" rx="16" fill="var(--color-surface)" stroke="var(--color-border)" />

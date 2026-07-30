@@ -16,6 +16,8 @@ export interface PdfToHtmlOptions {
 
 export interface PdfToHtmlResult {
   html: string;
+  /** Inner `<article>…</article>` markup for reuse (e.g. EPUB packaging). */
+  articleHtml: string;
   pageCount: number;
 }
 
@@ -166,6 +168,12 @@ export async function pdfToHtml(
     await doc.destroy();
   }
 
+  const articleHtml = `<article>
+<h1>${title}</h1>
+<p class="warn">Layout warning: this HTML is reading-order text (with heading heuristics and optional page images). Multi-column layouts, tables, and scanned pages may not match the original appearance.</p>
+${sections.join('\n')}
+</article>`;
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -185,13 +193,9 @@ export async function pdfToHtml(
 </style>
 </head>
 <body>
-<article>
-<h1>${title}</h1>
-<p class="warn">Layout warning: this HTML is reading-order text (with heading heuristics and optional page images). Multi-column layouts, tables, and scanned pages may not match the original appearance.</p>
-${sections.join('\n')}
-</article>
+${articleHtml}
 </body>
 </html>`;
 
-  return { html, pageCount: sections.length };
+  return { html, articleHtml, pageCount: sections.length };
 }

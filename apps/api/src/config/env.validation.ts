@@ -63,6 +63,22 @@ const envSchema = z.object({
     .url()
     .default('http://localhost:4000/api/cloud/drive/callback'),
   GOOGLE_TOKEN_ENCRYPTION_KEY: z.string().optional().default(''),
+  /** Optional Picker / Maps-style API key for Google Picker developerKey. */
+  GOOGLE_API_KEY: z.string().optional().default(''),
+  CLOUD_TOKEN_ENCRYPTION_KEY: z.string().optional().default(''),
+  DROPBOX_CLIENT_ID: z.string().optional().default(''),
+  DROPBOX_CLIENT_SECRET: z.string().optional().default(''),
+  DROPBOX_REDIRECT_URI: z
+    .string()
+    .url()
+    .default('http://localhost:4000/api/cloud/dropbox/callback'),
+  MICROSOFT_CLIENT_ID: z.string().optional().default(''),
+  MICROSOFT_CLIENT_SECRET: z.string().optional().default(''),
+  MICROSOFT_TENANT: z.string().optional().default('common'),
+  MICROSOFT_REDIRECT_URI: z
+    .string()
+    .url()
+    .default('http://localhost:4000/api/cloud/onedrive/callback'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema> & {
@@ -117,6 +133,20 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
   ) {
     throw new Error(
       'Invalid environment configuration: GOTENBERG_URL must not point at localhost in production'
+    );
+  }
+
+  const googleClientId = data.GOOGLE_CLIENT_ID?.trim() ?? '';
+  const dropboxId = data.DROPBOX_CLIENT_ID?.trim() ?? '';
+  const msId = data.MICROSOFT_CLIENT_ID?.trim() ?? '';
+  const tokenEncKey =
+    (data.CLOUD_TOKEN_ENCRYPTION_KEY?.trim() ||
+      data.GOOGLE_TOKEN_ENCRYPTION_KEY?.trim()) ??
+    '';
+  const anyCloud = Boolean(googleClientId || dropboxId || msId);
+  if (isProduction && anyCloud && tokenEncKey.length < 32) {
+    throw new Error(
+      'Invalid environment configuration: GOOGLE_TOKEN_ENCRYPTION_KEY or CLOUD_TOKEN_ENCRYPTION_KEY (32+ chars) is required in production when any cloud provider is enabled'
     );
   }
 

@@ -33,6 +33,9 @@
 - [ ] Error alerts announced (`role="alert"`)
 
 ## Out of scope (do not fail Phase 4)
-- Dropbox / OneDrive
-- Full CMS certificate signing
+- Dropbox / OneDrive → see Phase 5/6
+- Full CMS certificate signing → Phase 6 honesty upgrade
 - EPUB / full text editing
+
+## Phase 5 follow-ups
+See [PHASE5_A11Y_CHECKLIST.md](./PHASE5_A11Y_CHECKLIST.md) and `docs/PHASE5_STATUS.md`.

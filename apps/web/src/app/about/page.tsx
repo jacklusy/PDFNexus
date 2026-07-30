@@ -59,9 +59,9 @@ export default function AboutPage() {
         <section id="vision" className="pt-4">
           <h2 className="font-display text-xl text-[var(--color-ink)]">Vision</h2>
           <p>
-            Keep drafting local. Only when you download a final PDF or Word file
-            do we ask you to verify your email — unlocking secure temporary
-            storage, a download link, and optional email delivery.
+            Keep drafting local. Finished PDFs from local tools download
+            immediately — no account required. Email verification is optional if
+            you want temporary cloud storage or a branded download link.
           </p>
         </section>
         <section id="principles" className="pt-4">

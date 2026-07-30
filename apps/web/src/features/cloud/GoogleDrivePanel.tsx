@@ -5,6 +5,7 @@ import { Cloud, Link2Off, Loader2, Upload } from 'lucide-react';
 import { Button } from '@/shared/ui/Button';
 import { ApiError, apiFetch, apiPostJson } from '@/lib/api';
 import { canUseDriveExport, CONSENT_LABEL } from './driveConsent';
+import { openGooglePdfPicker } from './googlePicker';
 
 export interface DriveFileRow {
   id: string;
@@ -31,10 +32,10 @@ export function GoogleDrivePanel({
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [files, setFiles] = useState<DriveFileRow[]>([]);
-  const [query, setQuery] = useState('');
+  const [appFiles, setAppFiles] = useState<DriveFileRow[]>([]);
   const [consent, setConsent] = useState(false);
   const [exportResult, setExportResult] = useState<string | null>(null);
+  const [pickerHint, setPickerHint] = useState<string | null>(null);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -54,32 +55,23 @@ export function GoogleDrivePanel({
     }
   }, []);
 
-  const loadFiles = useCallback(
-    async (q?: string) => {
-      setBusy(true);
-      setError(null);
-      try {
-        const qs = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
-        const data = await apiFetch<{ files: DriveFileRow[] }>(
-          `/api/cloud/drive/files${qs}`
-        );
-        setFiles(data.files ?? []);
-      } catch (e) {
-        setError(e instanceof ApiError ? e.message : String(e));
-        setFiles([]);
-      } finally {
-        setBusy(false);
-      }
-    },
-    []
-  );
+  const loadAppFiles = useCallback(async () => {
+    try {
+      const data = await apiFetch<{ files: DriveFileRow[] }>(
+        '/api/cloud/drive/files'
+      );
+      setAppFiles(data.files ?? []);
+    } catch {
+      setAppFiles([]);
+    }
+  }, []);
 
   useEffect(() => {
     void (async () => {
       const ok = await refreshStatus();
-      if (ok) await loadFiles();
+      if (ok) await loadAppFiles();
     })();
-  }, [refreshStatus, loadFiles]);
+  }, [refreshStatus, loadAppFiles]);
 
   const connect = async () => {
     setBusy(true);
@@ -101,9 +93,10 @@ export function GoogleDrivePanel({
     try {
       await apiPostJson('/api/cloud/drive/disconnect', {});
       setConnected(false);
-      setFiles([]);
+      setAppFiles([]);
       setConsent(false);
       setExportResult(null);
+      setPickerHint(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
     } finally {
@@ -126,8 +119,46 @@ export function GoogleDrivePanel({
         { type: 'application/pdf' }
       );
       onImport(file);
+      await loadAppFiles();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pickFromDrive = async () => {
+    if (!onImport) return;
+    setBusy(true);
+    setError(null);
+    setPickerHint(null);
+    try {
+      const config = await apiFetch<{
+        clientId: string;
+        accessToken: string;
+        developerKey?: string;
+      }>('/api/cloud/drive/picker-config');
+
+      const picked = await openGooglePdfPicker({
+        clientId: config.clientId,
+        accessToken: config.accessToken,
+        developerKey: config.developerKey,
+      });
+
+      if (!picked) {
+        setPickerHint('No file selected.');
+        return;
+      }
+
+      await importFile(picked.id, picked.name);
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : String(e);
+      if (/picker|script|blocked|csp/i.test(msg)) {
+        setPickerHint(
+          'Google Picker could not load. You can still import PDFs this app created or previously opened (listed below).'
+        );
+      }
+      setError(msg);
     } finally {
       setBusy(false);
     }
@@ -154,6 +185,7 @@ export function GoogleDrivePanel({
           ? `Uploaded “${result.name}”`
           : `Uploaded “${result.name}” (${result.id})`
       );
+      await loadAppFiles();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
     } finally {
@@ -177,8 +209,8 @@ export function GoogleDrivePanel({
           <div>
             <p className="font-semibold text-[var(--color-ink)]">Google Drive</p>
             <p className="text-sm text-[var(--color-muted)]">
-              Optional import/export with drive.file scope only. Files leave the
-              browser only when you act.
+              Optional import/export with drive.file scope. Use Google Picker to
+              choose PDFs; this app cannot browse your full Drive library.
             </p>
           </div>
         </div>
@@ -206,47 +238,46 @@ export function GoogleDrivePanel({
 
       {connected ? (
         <>
-          <div className="flex gap-2">
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search PDFs…"
-              className="h-9 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
-              disabled={busy}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={() => void loadFiles(query)}
-            >
-              Search
-            </Button>
-          </div>
-
           {onImport ? (
-            <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
-              {files.length === 0 && !busy ? (
-                <li className="text-[var(--color-muted)]">No PDF files found.</li>
+            <div className="space-y-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={busy}
+                onClick={() => void pickFromDrive()}
+              >
+                Pick PDF from Drive
+              </Button>
+              {pickerHint ? (
+                <p className="text-sm text-[var(--color-muted)]">{pickerHint}</p>
               ) : null}
-              {files.map((f) => (
-                <li
-                  key={f.id}
-                  className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--color-surface-2)]"
-                >
-                  <span className="truncate">{f.name}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => void importFile(f.id, f.name)}
+              <p className="text-xs text-[var(--color-muted)]">
+                Files you pick or that this app created appear below.
+              </p>
+              <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
+                {appFiles.length === 0 && !busy ? (
+                  <li className="text-[var(--color-muted)]">
+                    No app-accessible PDFs yet. Use Pick PDF from Drive.
+                  </li>
+                ) : null}
+                {appFiles.map((f) => (
+                  <li
+                    key={f.id}
+                    className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--color-surface-2)]"
                   >
-                    Import
-                  </Button>
-                </li>
-              ))}
-            </ul>
+                    <span className="truncate">{f.name}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void importFile(f.id, f.name)}
+                    >
+                      Import
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : null}
 
           {exportFile ? (

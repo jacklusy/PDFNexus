@@ -63,6 +63,9 @@ export async function pdfToImages(
           options.quality
         );
       });
+      // Release canvas backing store before next page
+      canvas.width = 0;
+      canvas.height = 0;
       const name = options.namePattern
         .replace(/\{n\}/g, String(pageNum))
         .replace(/\{name\}/g, options.baseName);

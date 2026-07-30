@@ -20,7 +20,10 @@ import {
 import { clearPassword } from '../protect/pdfToolkit';
 
 export const CERT_SIGN_EXPERIMENTAL_NOTICE =
-  'Experimental MVP: visual certificate appearance + cert PEM attachment. Full CMS byte-range signing is not implemented yet.';
+  'Experimental: visual appearance + signer PEM + detached PKCS#7 (.p7s) attachment. Not Adobe-validated CMS byte-range signing — viewers will not show a green checkmark.';
+
+export const CERT_SIGN_CMS_GAP =
+  'Full PDF /ByteRange PKCS#7 embedding (ISO 32000) is not complete. Do not claim Adobe Reader validation, LTV, or TSA timestamps.';
 
 export interface CertSignOptions {
   pdfBytes: ArrayBuffer;
@@ -35,6 +38,8 @@ export interface CertSignResult {
   commonName: string;
   signedAtIso: string;
   experimental: true;
+  /** Detached CMS/PKCS#7 DER when private key was available. */
+  detachedPkcs7Der?: Uint8Array;
 }
 
 function arrayBufferToBinaryString(buffer: ArrayBuffer): string {
@@ -59,7 +64,12 @@ function getCommonName(cert: forge.pki.Certificate): string {
 export function parsePkcs12(
   p12Bytes: ArrayBuffer,
   password: string
-): { certificate: forge.pki.Certificate; commonName: string; pem: string } {
+): {
+  certificate: forge.pki.Certificate;
+  privateKey: forge.pki.PrivateKey | null;
+  commonName: string;
+  pem: string;
+} {
   let passwordCopy = password;
   try {
     const der = arrayBufferToBinaryString(p12Bytes);
@@ -83,13 +93,49 @@ export function parsePkcs12(
       throw new Error('No certificate found inside the PKCS#12 file.');
     }
 
+    const keyBags =
+      p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })[
+        forge.pki.oids.pkcs8ShroudedKeyBag
+      ] ??
+      p12.getBags({ bagType: forge.pki.oids.keyBag })[forge.pki.oids.keyBag] ??
+      [];
+    const privateKey = keyBags.find((b) => b.key)?.key ?? null;
+
     const pem = forge.pki.certificateToPem(certBag);
     const commonName = getCommonName(certBag);
-    return { certificate: certBag, commonName, pem };
+    return { certificate: certBag, privateKey, commonName, pem };
   } finally {
     clearPassword(passwordCopy);
     passwordCopy = '';
   }
+}
+
+/** Build a detached PKCS#7 SignedData over the given bytes (CMS MVP helper). */
+export function createDetachedPkcs7(
+  content: Uint8Array,
+  certificate: forge.pki.Certificate,
+  privateKey: forge.pki.PrivateKey
+): Uint8Array {
+  const p7 = forge.pkcs7.createSignedData();
+  p7.content = forge.util.createBuffer(
+    arrayBufferToBinaryString(
+      content.buffer.slice(
+        content.byteOffset,
+        content.byteOffset + content.byteLength
+      ) as ArrayBuffer
+    )
+  );
+  p7.addCertificate(certificate);
+  p7.addSigner({
+    key: privateKey as forge.pki.rsa.PrivateKey,
+    certificate,
+    digestAlgorithm: forge.pki.oids.sha256,
+  });
+  p7.sign({ detached: true });
+  const der = forge.asn1.toDer(p7.toAsn1()).getBytes();
+  const out = new Uint8Array(der.length);
+  for (let i = 0; i < der.length; i++) out[i] = der.charCodeAt(i);
+  return out;
 }
 
 export async function certSignPdf(
@@ -97,7 +143,10 @@ export async function certSignPdf(
 ): Promise<CertSignResult> {
   let password = options.password;
   try {
-    const { commonName, pem } = parsePkcs12(options.p12Bytes, password);
+    const { commonName, pem, certificate, privateKey } = parsePkcs12(
+      options.p12Bytes,
+      password
+    );
     password = '';
 
     const signedAt = new Date();
@@ -157,7 +206,7 @@ export async function certSignPdf(
       font,
       color: rgb(0.25, 0.25, 0.3),
     });
-    page.drawText('Cryptographically intended — experimental', {
+    page.drawText('Not Adobe-validated CMS', {
       x: x + pad,
       y: y + 10,
       size: 7,
@@ -165,7 +214,6 @@ export async function certSignPdf(
       color: rgb(0.45, 0.2, 0.15),
     });
 
-    // Light diagonal watermark label so it cannot be confused with /sign-pdf stamp
     page.drawText('CERT MVP', {
       x: x + boxW - 58,
       y: y + 28,
@@ -177,7 +225,7 @@ export async function certSignPdf(
     });
 
     doc.setProducer(
-      'PDFNexus experimental cert-sign MVP (not CMS byte-range signed)'
+      'PDFNexus experimental cert-sign (detached PKCS#7 attached; not ByteRange CMS)'
     );
     doc.setCreator('PDFNexus cert-sign (experimental)');
     doc.setModificationDate(signedAt);
@@ -186,6 +234,7 @@ export async function certSignPdf(
         'experimental-crypto-intent',
         `signer-cn:${commonName}`,
         `signed-at:${signedAtIso}`,
+        'not-adobe-validated',
       ]);
     } catch {
       // Keywords optional on some pdf-lib builds
@@ -199,10 +248,25 @@ export async function certSignPdf(
     const pemBytes = new TextEncoder().encode(pem);
     await doc.attach(pemBytes, 'signer.pem', {
       mimeType: 'application/x-pem-file',
-      description: `Signer certificate PEM for ${commonName} (experimental attachment; not a CMS signature)`,
+      description: `Signer certificate PEM for ${commonName} (experimental; not embedded ByteRange CMS)`,
       creationDate: signedAt,
       modificationDate: signedAt,
     });
+
+    let detachedPkcs7Der: Uint8Array | undefined;
+    if (privateKey) {
+      // Hash the source PDF bytes (pre-appearance) for a detached CMS artifact.
+      // This is intentionally NOT ISO 32000 ByteRange embedding.
+      const source = new Uint8Array(options.pdfBytes);
+      detachedPkcs7Der = createDetachedPkcs7(source, certificate, privateKey);
+      await doc.attach(detachedPkcs7Der, 'signature-detached.p7s', {
+        mimeType: 'application/pkcs7-signature',
+        description:
+          'Detached PKCS#7 over original PDF bytes — not an Adobe-validated PDF signature',
+        creationDate: signedAt,
+        modificationDate: signedAt,
+      });
+    }
 
     const bytes = await doc.save({ useObjectStreams: false });
     return {
@@ -210,6 +274,7 @@ export async function certSignPdf(
       commonName,
       signedAtIso,
       experimental: true,
+      detachedPkcs7Der,
     };
   } finally {
     clearPassword(password);

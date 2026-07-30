@@ -10,6 +10,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 const links = [
   { href: '/workspace', label: 'Workspace' },
   { href: '/tools', label: 'Tools' },
+  { href: '/cloud', label: 'Cloud' },
   { href: '/guide', label: 'Guide' },
   { href: '/about', label: 'About' },
   { href: '/feedback', label: 'Feedback' },
@@ -41,6 +42,7 @@ const toolLinks = [
   { href: '/create-pdf-form', label: 'Create PDF form' },
   { href: '/redact-pdf', label: 'Redact PDF' },
   { href: '/pdf-to-html', label: 'PDF to HTML' },
+  { href: '/pdf-to-epub', label: 'PDF to EPUB' },
   { href: '/office-to-pdf', label: 'Office to PDF' },
   { href: '/cert-sign-pdf', label: 'Cert sign PDF' },
 ];

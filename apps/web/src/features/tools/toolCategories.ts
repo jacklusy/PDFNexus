@@ -45,6 +45,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
       { href: '/pdf-to-excel', label: 'PDF to Excel', blurb: 'Detect tables → .xlsx.' },
       { href: '/pdf-to-pptx', label: 'PDF to PPTX', blurb: 'Image-based slides.' },
       { href: '/pdf-to-html', label: 'PDF to HTML', blurb: 'Reading-order HTML export.' },
+      { href: '/pdf-to-epub', label: 'PDF to EPUB', blurb: 'Reflowable EPUB from text layer.' },
       { href: '/office-to-pdf', label: 'Office to PDF', blurb: 'DOCX/XLSX/PPTX via server.' },
     ],
   },
@@ -81,7 +82,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
       {
         href: '/cert-sign-pdf',
         label: 'Cert sign PDF',
-        blurb: 'Experimental PKCS#12 appearance (not CMS).',
+        blurb: 'Experimental PKCS#12 + detached PKCS#7 (not Adobe-valid).',
       },
       { href: '/compress-pdf', label: 'Compress PDF', blurb: 'Reduce file size locally.' },
     ],

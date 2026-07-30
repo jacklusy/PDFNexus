@@ -7,6 +7,12 @@ import {
 import { ErrorCodes } from '@pdfnexus/shared';
 import { GoogleOAuthService } from './google-oauth.service';
 
+import { MAX_CLOUD_FILE_BYTES } from './cloud-constants';
+
+export { MAX_CLOUD_FILE_BYTES };
+/** @deprecated Use MAX_CLOUD_FILE_BYTES */
+export const MAX_DRIVE_FILE_BYTES = MAX_CLOUD_FILE_BYTES;
+
 export interface DriveFileListItem {
   id: string;
   name: string;
@@ -32,6 +38,7 @@ export class DriveService {
 
   private async requireAccessToken(sessionId: string): Promise<string> {
     this.oauth.assertConfigured();
+    this.oauth.assertEncryptionReady();
     const token = await this.oauth.getAccessToken(sessionId);
     if (!token) {
       throw new UnauthorizedException({
@@ -42,16 +49,17 @@ export class DriveService {
     return token;
   }
 
+  /**
+   * Lists PDFs the app can see under drive.file (typically app-created/opened).
+   * Arbitrary library browse requires Google Picker on the client.
+   */
   async listPdfFiles(
     sessionId: string,
     query?: string,
   ): Promise<DriveFileListItem[]> {
     const accessToken = await this.requireAccessToken(sessionId);
 
-    const qParts = [
-      "mimeType='application/pdf'",
-      'trashed=false',
-    ];
+    const qParts = ["mimeType='application/pdf'", 'trashed=false'];
     if (query?.trim()) {
       const safe = query.trim().replace(/\\/g, '\\\\').replace(/'/g, "\\'");
       qParts.push(`name contains '${safe}'`);
@@ -60,26 +68,21 @@ export class DriveService {
     const params = new URLSearchParams({
       q: qParts.join(' and '),
       pageSize: '50',
-      fields:
-        'files(id,name,mimeType,modifiedTime,size,webViewLink)',
+      fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink)',
       spaces: 'drive',
       orderBy: 'modifiedTime desc',
     });
 
     const res = await fetch(
       `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      },
+      { headers: { Authorization: `Bearer ${accessToken}` } },
     );
 
     if (!res.ok) {
       throw await this.driveError(res, 'Failed to list Drive files');
     }
 
-    const json = (await res.json()) as {
-      files?: DriveFileListItem[];
-    };
+    const json = (await res.json()) as { files?: DriveFileListItem[] };
     return json.files ?? [];
   }
 
@@ -97,7 +100,7 @@ export class DriveService {
     const accessToken = await this.requireAccessToken(sessionId);
 
     const metaRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType`,
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,size`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
     if (!metaRes.ok) {
@@ -106,7 +109,16 @@ export class DriveService {
     const meta = (await metaRes.json()) as {
       name?: string;
       mimeType?: string;
+      size?: string;
     };
+
+    const sizeNum = meta.size ? Number(meta.size) : NaN;
+    if (Number.isFinite(sizeNum) && sizeNum > MAX_DRIVE_FILE_BYTES) {
+      throw new BadRequestException({
+        error: 'File exceeds the 50MB Drive import limit',
+        code: ErrorCodes.FILE_TOO_LARGE,
+      });
+    }
 
     const contentRes = await fetch(
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`,
@@ -117,6 +129,13 @@ export class DriveService {
     }
 
     const ab = await contentRes.arrayBuffer();
+    if (ab.byteLength > MAX_DRIVE_FILE_BYTES) {
+      throw new BadRequestException({
+        error: 'File exceeds the 50MB Drive import limit',
+        code: ErrorCodes.FILE_TOO_LARGE,
+      });
+    }
+
     return {
       buffer: Buffer.from(ab),
       name: meta.name || 'document.pdf',
@@ -134,16 +153,31 @@ export class DriveService {
         code: ErrorCodes.FILE_INVALID,
       });
     }
+    if (file.buffer.length > MAX_DRIVE_FILE_BYTES) {
+      throw new BadRequestException({
+        error: 'File exceeds the 50MB Drive export limit',
+        code: ErrorCodes.FILE_TOO_LARGE,
+      });
+    }
+
+    const mime = (file.mimetype || '').toLowerCase();
+    const nameLower = (file.originalname || '').toLowerCase();
+    const okMime =
+      mime === 'application/pdf' ||
+      mime === 'application/octet-stream' ||
+      nameLower.endsWith('.pdf');
+    if (!okMime) {
+      throw new BadRequestException({
+        error: 'Only PDF files can be exported to Drive',
+        code: ErrorCodes.FILE_INVALID,
+      });
+    }
 
     const accessToken = await this.requireAccessToken(sessionId);
     const name = file.originalname || 'document.pdf';
-    const mimeType = file.mimetype || 'application/pdf';
+    const mimeType = 'application/pdf';
 
-    const metadata = JSON.stringify({
-      name,
-      mimeType,
-    });
-
+    const metadata = JSON.stringify({ name, mimeType });
     const boundary = `pdfnexus_${Date.now().toString(36)}`;
     const preamble = Buffer.from(
       `--${boundary}\r\n` +
@@ -185,29 +219,39 @@ export class DriveService {
     };
   }
 
+  /** Safe client-facing errors — never forward raw Google payloads. */
   private async driveError(
     res: Response,
     fallback: string,
-  ): Promise<ServiceUnavailableException | UnauthorizedException> {
-    let detail = fallback;
+  ): Promise<
+    | ServiceUnavailableException
+    | UnauthorizedException
+    | BadRequestException
+  > {
+    // Drain body so the connection can close; discard provider detail.
     try {
-      const json = (await res.json()) as {
-        error?: { message?: string };
-      };
-      if (json.error?.message) detail = json.error.message;
+      await res.text();
     } catch {
       // ignore
     }
 
     if (res.status === 401 || res.status === 403) {
       return new UnauthorizedException({
-        error: detail,
+        error:
+          'Google Drive authorization failed. Reconnect Drive and try again.',
         code: ErrorCodes.AUTH_REQUIRED,
       });
     }
 
+    if (res.status === 404) {
+      return new BadRequestException({
+        error: 'Drive file was not found or is not accessible to this app.',
+        code: ErrorCodes.FILE_INVALID,
+      });
+    }
+
     return new ServiceUnavailableException({
-      error: detail,
+      error: fallback,
       code: 'DRIVE_REQUEST_FAILED',
     });
   }

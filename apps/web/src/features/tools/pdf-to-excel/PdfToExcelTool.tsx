@@ -10,6 +10,7 @@ import { loadReadablePdf } from '../assertPdfReadable';
 import { detectTables, type DetectedTable } from './detectTables';
 import { canRunOcrTableDetect, detectTablesViaOcr } from './ocrTables';
 import { pdfToExcel } from './pdfToExcel';
+import { ToolError } from '../ToolError';
 
 export function PdfToExcelTool() {
   const { files, setFiles } = useToolHandoff();
@@ -230,9 +231,16 @@ export function PdfToExcelTool() {
 
       {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
       {error ? (
-        <p className="text-sm text-[var(--color-danger)]" role="alert">
-          {error}
-        </p>
+        <ToolError
+          message={error}
+          fileName={file?.name}
+          cloudNote={
+            ocrConsent
+              ? 'If OCR ran, page images may have been sent after consent. Your original PDF is unchanged.'
+              : undefined
+          }
+          onRetry={() => setError(null)}
+        />
       ) : null}
     </ToolWorkbench>
   );

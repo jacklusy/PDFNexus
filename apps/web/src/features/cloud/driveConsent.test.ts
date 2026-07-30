@@ -1,16 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { canUseDriveExport, CONSENT_LABEL } from './driveConsent';
+import {
+  canUseCloudExport,
+  canUseDriveExport,
+  consentLabelFor,
+  CONSENT_LABEL,
+} from './driveConsent';
 
-describe('canUseDriveExport', () => {
+describe('cloud consent gates', () => {
   it('blocks export without consent', () => {
+    expect(canUseCloudExport(false)).toBe(false);
     expect(canUseDriveExport(false)).toBe(false);
   });
 
   it('allows export with consent', () => {
-    expect(canUseDriveExport(true)).toBe(true);
+    expect(canUseCloudExport(true)).toBe(true);
   });
 
-  it('exposes a clear consent label', () => {
+  it('labels each provider clearly', () => {
+    expect(consentLabelFor('Dropbox').toLowerCase()).toContain('dropbox');
+    expect(consentLabelFor('OneDrive').toLowerCase()).toContain('onedrive');
     expect(CONSENT_LABEL.toLowerCase()).toContain('google drive');
   });
 });

@@ -7,6 +7,7 @@ import { Button } from '@/shared/ui/Button';
 import { formatTransferBytes } from '@/features/transfer/transferFormat';
 import {
   badgeForProcessingMode,
+  defaultDropHint,
   defaultPrivacyNote,
   type ProcessingMode,
 } from './processingMode';
@@ -70,7 +71,7 @@ export function ToolWorkbench({
   processingMode = 'local',
   badgeLabel,
   dropLabel = 'Drop a PDF here or click to browse',
-  dropHint = 'Processed in your browser — files stay on this device',
+  dropHint,
   privacyNote,
   pickerLabel = 'Choose PDF file',
   experimental = false,
@@ -81,6 +82,7 @@ export function ToolWorkbench({
   const resolvedBadge =
     badgeLabel ?? badgeForProcessingMode(processingMode, experimental);
   const resolvedPrivacy = privacyNote ?? defaultPrivacyNote(processingMode);
+  const resolvedDropHint = dropHint ?? defaultDropHint(processingMode);
 
   const addFiles = useCallback(
     (list: FileList | File[]) => {
@@ -169,7 +171,7 @@ export function ToolWorkbench({
       >
         <FileUp className="h-8 w-8 text-[var(--color-accent)]" aria-hidden />
         <p className="mt-2 text-sm font-medium text-[var(--color-ink)]">{dropLabel}</p>
-        <p className="mt-1 text-xs text-[var(--color-muted)]">{dropHint}</p>
+        <p className="mt-1 text-xs text-[var(--color-muted)]">{resolvedDropHint}</p>
         <input
           ref={inputRef}
           id={inputId}

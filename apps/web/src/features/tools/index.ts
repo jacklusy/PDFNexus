@@ -8,6 +8,8 @@ export { ToolError } from './ToolError';
 export { useTimedProgress, formatElapsed } from './useTimedProgress';
 export {
   badgeForProcessingMode,
+  defaultDropHint,
+  defaultPrivacyNote,
   PROCESSING_MODE_BADGE,
   type ProcessingMode,
 } from './processingMode';
@@ -27,5 +29,6 @@ export { BatesTool } from './bates/BatesTool';
 export { FormsTool } from './forms/FormsTool';
 export { RedactTool } from './redact/RedactTool';
 export { PdfToHtmlTool } from './pdf-to-html/PdfToHtmlTool';
+export { PdfToEpubTool } from './pdf-to-epub/PdfToEpubTool';
 export { OfficeToPdfTool } from './office-to-pdf/OfficeToPdfTool';
 export { CertSignTool } from './cert-sign/CertSignTool';

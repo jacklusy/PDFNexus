@@ -33,6 +33,7 @@ export const PHASE3_TOOL_ROUTES = [
   '/create-pdf-form',
   '/redact-pdf',
   '/pdf-to-html',
+  '/pdf-to-epub',
   '/office-to-pdf',
   '/cert-sign-pdf',
 ] as const;

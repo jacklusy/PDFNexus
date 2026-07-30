@@ -20,13 +20,13 @@ try {
 
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://pagead2.googlesyndication.com https://www.googletagservices.com https://www.google.com https://partner.googleadservices.com",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://pagead2.googlesyndication.com https://www.googletagservices.com https://www.google.com https://partner.googleadservices.com https://apis.google.com https://accounts.google.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https:",
-  `connect-src 'self' ${apiOrigin} ${storageOrigin} https://pagead2.googlesyndication.com https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com`,
+  `connect-src 'self' ${apiOrigin} ${storageOrigin} https://pagead2.googlesyndication.com https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com https://apis.google.com`,
   "worker-src 'self' blob:",
-  "frame-src 'self' https://googleads.g.doubleclick.net https://tpc.googlesyndication.com",
+  "frame-src 'self' https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://docs.google.com https://drive.google.com https://accounts.google.com",
   "object-src 'none'",
   "base-uri 'self'",
   "frame-ancestors 'none'",

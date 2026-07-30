@@ -16,6 +16,7 @@ import {
   type RedactRegion,
   type VerifyMatch,
 } from './redactPdf';
+import { ToolError } from '../ToolError';
 
 function makeId() {
   return Math.random().toString(36).slice(2, 10);
@@ -340,9 +341,11 @@ export function RedactTool() {
         <p className="text-sm text-[var(--color-muted)]">{progress}</p>
       ) : null}
       {error ? (
-        <p className="text-sm text-[var(--color-danger)]" role="alert">
-          {error}
-        </p>
+        <ToolError
+          message={error}
+          fileName={files[0]?.name}
+          onRetry={() => setError(null)}
+        />
       ) : null}
     </ToolWorkbench>
   );
