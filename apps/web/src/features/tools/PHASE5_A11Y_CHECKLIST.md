@@ -1,22 +1,22 @@
-# Phase 5 — Accessibility & manual QA checklist
+# Phase 5 / 7 — Accessibility & manual QA checklist
 
-Extends [PHASE4_A11Y_CHECKLIST.md](./PHASE4_A11Y_CHECKLIST.md).
+Automated smoke exists for consent, processingMode, cloud limits, EPUB packaging, and cert honesty constants. **Items below stay unchecked until manually verified.**
 
-## Drive / security honesty
+## Drive / cloud security honesty
 - [ ] “Pick PDF from Drive” opens Google Picker (or shows honest fallback copy)
-- [ ] Empty / failed Picker does not claim full Drive library search
-- [ ] Export still requires consent checkbox
+- [ ] OAuth reconnect after disconnect works; session_mismatch if cookie missing mid-flow
+- [ ] Export requires consent checkbox
 - [ ] Oversized (>50MB) import/export shows clear error
-- [ ] Production without `GOOGLE_TOKEN_ENCRYPTION_KEY` refuses Drive token storage
+- [ ] Dropbox / OneDrive connect from `/cloud` without making cloud mandatory
 
 ## Copy / transparency
-- [ ] About + MarketingHero: local downloads ungated; email optional
+- [ ] About + home (`page.tsx`): local downloads ungated; email optional
 - [ ] Privacy illustration aria-label does not require email for local use
-- [ ] `dropHint` matches processing mode (local vs server vs cloud-assisted)
-- [ ] Excel / Redact / Protect / Batch failures use `ToolError` (`role="alert"`)
+- [ ] `dropHint` matches processing mode
+- [ ] Excel / Redact / Protect / Batch / CertSign failures use `ToolError`
 
 ## Batch
-- [ ] Progress shows **File i / n** for queue jobs (not mislabeled as pages only)
+- [ ] Progress shows File i / n for queue jobs
 - [ ] Cancel stops after current job; remaining stay pending
 - [ ] Keyboard reaches Cancel on `ToolProgress`
 
@@ -24,13 +24,7 @@ Extends [PHASE4_A11Y_CHECKLIST.md](./PHASE4_A11Y_CHECKLIST.md).
 - [ ] Structural compress (rasterize off) can cancel via worker terminate
 - [ ] PDF→images / compress JPEG path clears canvas dimensions after encode
 
-## Automated smoke (Vitest)
-- [x] `processingMode` drop hints
-- [x] Drive consent gate
-- [x] Drive 50MB constant (`drive-limits.test.ts` on API)
-
-## Out of scope (do not fail Phase 5)
-- Dropbox / OneDrive (Phase 6)
-- EPUB (Phase 6)
-- Full CMS / Adobe-valid cert signing
-- Full text editing
+## Out of scope
+- Full text editing (§9)
+- Adobe ByteRange CMS / TSA / LTV
+- Multi-op DAG

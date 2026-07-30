@@ -28,7 +28,7 @@ Email verification and Google Drive are **optional**. Local tool results downloa
 - **Token encryption** — access + refresh encrypted at rest when key ≥32 chars; **required in production** if Drive is enabled
 - **50MB** import/export cap; sanitized Drive error messages (no raw Google payloads)
 - **Single Redis key** per OAuth session (no dual-write)
-- **Copy honesty** — About / MarketingHero / PrivacyIllustration / `dropHint` from `processingMode`
+- **Copy honesty** — About / live home (`page.tsx`) / PrivacyIllustration / `dropHint` from `processingMode`
 - **ToolError** on Excel OCR, redact, protect, batch failures; batch cancel + file/page progress labels
 - **Workers** — structural compress path via `compress.worker.ts`; canvas cleanup on image export / JPEG raster
 - CSP allows Google Picker script/frame origins
@@ -41,6 +41,8 @@ Email verification and Google Drive are **optional**. Local tool results downloa
 - No healthcare/legal compliance claims
 - Full existing-text editing (§9) is out of scope
 
-## Remaining → Phase 6
+## Remaining → Phase 6+
 
-See [PLATFORM_STATUS.md](./PLATFORM_STATUS.md) for Phase 6 completion (Dropbox/OneDrive, EPUB, cert-sign honesty, QA matrix).
+Completed through Phase 8. Authoritative status: [PLATFORM_STATUS.md](./PLATFORM_STATUS.md).
+
+Live home honesty lives in `apps/web/src/app/page.tsx` (MarketingHero removed).

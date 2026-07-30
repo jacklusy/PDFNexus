@@ -6,23 +6,26 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { RedisService } from '../redis/redis.service';
-import { decryptToken, encryptToken } from './token-crypto';
+import {
+  isCloudTokenEncryptionConfigured,
+  resolveCloudTokenEncryptionKey,
+} from './encryption-key';
+import {
+  deserializeCloudTokenRecord,
+  serializeCloudTokenRecord,
+} from './oauth-token-store';
+import type { CloudTokenRecord } from './cloud-provider';
 
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const TOKEN_TTL_SEC = 60 * 24 * 60 * 60; // 60 days
 const STATE_TTL_SEC = 10 * 60;
 
-export interface DriveTokenRecord {
-  refreshToken: string;
-  accessToken?: string;
-  accessExpiresAt?: number;
-  connectedAt: number;
-}
+export type DriveTokenRecord = CloudTokenRecord;
 
 @Injectable()
 export class GoogleOAuthService {
   private readonly logger = new Logger(GoogleOAuthService.name);
-  private warnedMissingKey = false;
+  private warnedMissingKey = { current: false };
 
   constructor(
     private readonly config: ConfigService,
@@ -45,7 +48,7 @@ export class GoogleOAuthService {
   }
 
   private get encryptionKey(): string {
-    return (this.config.get<string>('GOOGLE_TOKEN_ENCRYPTION_KEY') ?? '').trim();
+    return resolveCloudTokenEncryptionKey(this.config);
   }
 
   assertConfigured(): void {
@@ -62,10 +65,10 @@ export class GoogleOAuthService {
   assertEncryptionReady(): void {
     const key = this.encryptionKey;
     const isProd = this.config.get<string>('NODE_ENV') === 'production';
-    if (isProd && key.length < 32) {
+    if (isProd && !isCloudTokenEncryptionConfigured(key)) {
       throw new ServiceUnavailableException({
         error:
-          'GOOGLE_TOKEN_ENCRYPTION_KEY (32+ chars) is required in production for Drive tokens.',
+          'GOOGLE_TOKEN_ENCRYPTION_KEY or CLOUD_TOKEN_ENCRYPTION_KEY (32+ chars) is required in production for Drive tokens.',
         code: 'DRIVE_ENCRYPTION_REQUIRED',
       });
     }
@@ -109,11 +112,7 @@ export class GoogleOAuthService {
 
   async consumeState(state: string): Promise<string | null> {
     const key = this.stateRedisKey(state);
-    const sessionId = await this.redis.client.get(key);
-    if (sessionId) {
-      await this.redis.client.del(key);
-    }
-    return sessionId;
+    return this.redis.client.getdel(key);
   }
 
   async exchangeCode(code: string): Promise<{
@@ -138,14 +137,8 @@ export class GoogleOAuthService {
 
     const json = (await res.json()) as Record<string, unknown>;
     if (!res.ok) {
-      const msg =
-        typeof json.error_description === 'string'
-          ? json.error_description
-          : typeof json.error === 'string'
-            ? json.error
-            : 'OAuth token exchange failed';
       throw new ServiceUnavailableException({
-        error: msg,
+        error: 'OAuth token exchange failed',
         code: 'DRIVE_OAUTH_FAILED',
       });
     }
@@ -177,8 +170,7 @@ export class GoogleOAuthService {
   ): Promise<void> {
     this.assertEncryptionReady();
     const existing = await this.getTokenRecord(sessionId);
-    const refresh =
-      tokens.refreshToken || existing?.refreshToken || '';
+    const refresh = tokens.refreshToken || existing?.refreshToken || '';
     if (!refresh) {
       this.logger.warn(
         'No refresh token from Google; reusing existing or storing access-only session',
@@ -194,7 +186,13 @@ export class GoogleOAuthService {
       connectedAt: existing?.connectedAt ?? Date.now(),
     };
 
-    const payload = this.serializeRecord(record);
+    const payload = serializeCloudTokenRecord(
+      record,
+      this.encryptionKey,
+      this.logger,
+      this.warnedMissingKey,
+      'Drive',
+    );
     await this.redis.client.set(
       this.tokenRedisKey(sessionId),
       payload,
@@ -207,7 +205,7 @@ export class GoogleOAuthService {
     const raw = await this.redis.client.get(this.tokenRedisKey(sessionId));
     if (!raw) return null;
     try {
-      return this.deserializeRecord(raw);
+      return deserializeCloudTokenRecord(raw, this.encryptionKey);
     } catch (err) {
       this.logger.error(
         `Failed to deserialize Drive tokens: ${err instanceof Error ? err.message : err}`,
@@ -270,47 +268,5 @@ export class GoogleOAuthService {
     });
 
     return accessToken;
-  }
-
-  private serializeRecord(record: DriveTokenRecord): string {
-    this.assertEncryptionReady();
-    const key = this.encryptionKey;
-    let refreshToken = record.refreshToken;
-    let accessToken = record.accessToken;
-    if (key.length >= 32) {
-      if (refreshToken) refreshToken = encryptToken(refreshToken, key);
-      if (accessToken) accessToken = encryptToken(accessToken, key);
-    } else if (!this.warnedMissingKey) {
-      this.warnedMissingKey = true;
-      this.logger.warn(
-        'GOOGLE_TOKEN_ENCRYPTION_KEY missing or shorter than 32 chars — storing Drive tokens unencrypted (dev only)',
-      );
-    }
-
-    return JSON.stringify({
-      ...record,
-      refreshToken,
-      accessToken,
-    });
-  }
-
-  private deserializeRecord(raw: string): DriveTokenRecord {
-    const parsed = JSON.parse(raw) as DriveTokenRecord;
-    const key = this.encryptionKey;
-    let refreshToken = parsed.refreshToken ?? '';
-    let accessToken = parsed.accessToken;
-    if (key.length >= 32) {
-      try {
-        if (refreshToken) refreshToken = decryptToken(refreshToken, key);
-      } catch {
-        // May be plaintext from before key was set
-      }
-      try {
-        if (accessToken) accessToken = decryptToken(accessToken, key);
-      } catch {
-        // ignore
-      }
-    }
-    return { ...parsed, refreshToken, accessToken };
   }
 }

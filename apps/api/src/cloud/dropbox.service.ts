@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { ErrorCodes } from '@pdfnexus/shared';
-import { MAX_CLOUD_FILE_BYTES } from './cloud-constants';
+import { MAX_CLOUD_FILE_BYTES, isPdfUpload } from './cloud-constants';
 import { CloudTokenStore } from './cloud-token-store';
 
 const PROVIDER = 'dropbox';
@@ -237,6 +237,42 @@ export class DropboxService {
       });
     }
     const token = await this.requireToken(sessionId);
+
+    const metaRes = await fetch(
+      'https://api.dropboxapi.com/2/files/get_metadata',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ path: fileId }),
+      },
+    );
+    if (!metaRes.ok) {
+      throw new ServiceUnavailableException({
+        error: 'Failed to fetch Dropbox file metadata',
+        code: 'DROPBOX_REQUEST_FAILED',
+      });
+    }
+    const meta = (await metaRes.json()) as {
+      name?: string;
+      size?: number;
+      ['.tag']?: string;
+    };
+    if (meta['.tag'] === 'folder') {
+      throw new BadRequestException({
+        error: 'Cannot import a Dropbox folder',
+        code: ErrorCodes.FILE_INVALID,
+      });
+    }
+    if (meta.size != null && meta.size > MAX_CLOUD_FILE_BYTES) {
+      throw new BadRequestException({
+        error: 'File exceeds the 50MB cloud import limit',
+        code: ErrorCodes.FILE_TOO_LARGE,
+      });
+    }
+
     const res = await fetch(
       'https://content.dropboxapi.com/2/files/download',
       {
@@ -260,19 +296,9 @@ export class DropboxService {
         code: ErrorCodes.FILE_TOO_LARGE,
       });
     }
-    const apiResult = res.headers.get('dropbox-api-result');
-    let name = 'document.pdf';
-    try {
-      if (apiResult) {
-        const meta = JSON.parse(apiResult) as { name?: string };
-        if (meta.name) name = meta.name;
-      }
-    } catch {
-      // ignore
-    }
     return {
       buffer: Buffer.from(ab),
-      name,
+      name: meta.name || 'document.pdf',
       mimeType: 'application/pdf',
     };
   }
@@ -288,6 +314,12 @@ export class DropboxService {
       throw new BadRequestException({
         error: 'File exceeds the 50MB cloud export limit',
         code: ErrorCodes.FILE_TOO_LARGE,
+      });
+    }
+    if (!isPdfUpload(file)) {
+      throw new BadRequestException({
+        error: 'Only PDF files can be exported to Dropbox',
+        code: ErrorCodes.FILE_INVALID,
       });
     }
     const token = await this.requireToken(sessionId);

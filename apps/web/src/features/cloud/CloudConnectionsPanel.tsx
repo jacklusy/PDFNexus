@@ -28,14 +28,14 @@ export function CloudConnectionsPanel({
       <GenericCloudPanel
         provider="dropbox"
         title="Dropbox"
-        description="Optional Dropbox import/export with narrow file scopes. Never required."
+        description="Optional Dropbox import/export (files.content.read/write). Never required."
         onImport={onImport}
         exportFile={exportFile}
       />
       <GenericCloudPanel
         provider="onedrive"
         title="OneDrive"
-        description="Optional OneDrive import/export via Microsoft Graph Files.ReadWrite. Never required."
+        description="Optional OneDrive app-folder import/export (Files.ReadWrite.AppFolder). Never required."
         onImport={onImport}
         exportFile={exportFile}
       />

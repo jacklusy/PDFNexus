@@ -22,7 +22,6 @@ import type { Request, Response } from 'express';
 import { randomBytes } from 'crypto';
 import { ErrorCodes } from '@pdfnexus/shared';
 import { SameOriginGuard } from '../ocr/same-origin.guard';
-import { CookieService } from '../auth/cookie.service';
 import { DriveService } from './drive.service';
 import { MAX_CLOUD_FILE_BYTES } from './cloud-constants';
 import { GoogleOAuthService } from './google-oauth.service';
@@ -34,6 +33,7 @@ import {
   OneDriveOAuthService,
   OneDriveService,
 } from './onedrive.service';
+import { oauthCallbackSessionMatches } from './oauth-callback-guard';
 
 const DRIVE_SESSION_COOKIE = 'drive_session';
 const DROPBOX_SESSION_COOKIE = 'dropbox_session';
@@ -49,7 +49,6 @@ export class CloudController {
     private readonly dropbox: DropboxService,
     private readonly onedriveOauth: OneDriveOAuthService,
     private readonly onedrive: OneDriveService,
-    private readonly cookies: CookieService,
     private readonly config: ConfigService,
   ) {}
 
@@ -97,16 +96,14 @@ export class CloudController {
   }
 
   /**
-   * Prefer verified_email when present. Always use drive_session for Redis
-   * token keys (set on auth-url / OAuth callback).
+   * Require an existing Drive session cookie (same model as Dropbox/OneDrive).
+   * Email verification does not unlock Drive APIs.
    */
   private requireSession(req: Request, res: Response): string {
-    const verified = this.cookies.readVerifiedEmail(req);
     const driveSession = this.readDriveSession(req);
-    if (!verified && !driveSession) {
+    if (!driveSession) {
       throw new UnauthorizedException({
-        error:
-          'A Drive session is required. Connect Google Drive first, or verify your email.',
+        error: 'A Drive session is required. Connect Google Drive first.',
         code: ErrorCodes.AUTH_REQUIRED,
       });
     }
@@ -137,10 +134,7 @@ export class CloudController {
     const redirectBase = `${this.appUrl.replace(/\/$/, '')}/workspace`;
 
     if (oauthError) {
-      return res.redirect(
-        302,
-        `${redirectBase}?drive=error&reason=${encodeURIComponent(oauthError)}`,
-      );
+      return res.redirect(302, `${redirectBase}?drive=error&reason=oauth_denied`);
     }
 
     if (!code || !state) {
@@ -160,7 +154,14 @@ export class CloudController {
         );
       }
 
-      // Single Redis key only — always the OAuth state session.
+      const cookieSession = this.readDriveSession(req);
+      if (!oauthCallbackSessionMatches(cookieSession, stateSession)) {
+        return res.redirect(
+          302,
+          `${redirectBase}?drive=error&reason=session_mismatch`,
+        );
+      }
+
       const sessionId = stateSession;
       this.setDriveSessionCookie(res, sessionId);
 
@@ -397,19 +398,27 @@ export class CloudController {
     @Query('code') code: string | undefined,
     @Query('state') state: string | undefined,
     @Query('error') oauthError: string | undefined,
+    @Req() req: Request,
     @Res() res: Response,
   ) {
     const redirectBase = `${this.appUrl.replace(/\/$/, '')}/workspace`;
     if (oauthError || !code || !state) {
       return res.redirect(
         302,
-        `${redirectBase}?dropbox=error&reason=${encodeURIComponent(oauthError || 'missing_code')}`,
+        `${redirectBase}?dropbox=error&reason=${oauthError ? 'oauth_denied' : 'missing_code'}`,
       );
     }
     try {
       const sessionId = await this.dropboxOauth.consumeState(state);
       if (!sessionId) {
         return res.redirect(302, `${redirectBase}?dropbox=error&reason=invalid_state`);
+      }
+      const cookieSession = this.readProviderSession(req, DROPBOX_SESSION_COOKIE);
+      if (!oauthCallbackSessionMatches(cookieSession, sessionId)) {
+        return res.redirect(
+          302,
+          `${redirectBase}?dropbox=error&reason=session_mismatch`,
+        );
       }
       this.setProviderSessionCookie(res, DROPBOX_SESSION_COOKIE, sessionId);
       const tokens = await this.dropboxOauth.exchangeCode(code);
@@ -538,19 +547,27 @@ export class CloudController {
     @Query('code') code: string | undefined,
     @Query('state') state: string | undefined,
     @Query('error') oauthError: string | undefined,
+    @Req() req: Request,
     @Res() res: Response,
   ) {
     const redirectBase = `${this.appUrl.replace(/\/$/, '')}/workspace`;
     if (oauthError || !code || !state) {
       return res.redirect(
         302,
-        `${redirectBase}?onedrive=error&reason=${encodeURIComponent(oauthError || 'missing_code')}`,
+        `${redirectBase}?onedrive=error&reason=${oauthError ? 'oauth_denied' : 'missing_code'}`,
       );
     }
     try {
       const sessionId = await this.onedriveOauth.consumeState(state);
       if (!sessionId) {
         return res.redirect(302, `${redirectBase}?onedrive=error&reason=invalid_state`);
+      }
+      const cookieSession = this.readProviderSession(req, ONEDRIVE_SESSION_COOKIE);
+      if (!oauthCallbackSessionMatches(cookieSession, sessionId)) {
+        return res.redirect(
+          302,
+          `${redirectBase}?onedrive=error&reason=session_mismatch`,
+        );
       }
       this.setProviderSessionCookie(res, ONEDRIVE_SESSION_COOKIE, sessionId);
       const tokens = await this.onedriveOauth.exchangeCode(code);

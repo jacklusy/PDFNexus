@@ -6,9 +6,11 @@ import Link from 'next/link';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench } from '../ToolWorkbench';
+import { ToolError } from '../ToolError';
 import { useToolHandoff } from '../useToolHandoff';
 import { clearPassword } from '../protect/pdfToolkit';
 import {
+  CERT_SIGN_CMS_GAP,
   CERT_SIGN_EXPERIMENTAL_NOTICE,
   certSignPdf,
 } from './certSignPdf';
@@ -114,6 +116,12 @@ export function CertSignTool() {
             /ByteRange CMS — Adobe Reader will not show a validated signature.
           </p>
           <p className="text-[var(--color-muted)]">{CERT_SIGN_EXPERIMENTAL_NOTICE}</p>
+          <p className="text-[var(--color-muted)]">{CERT_SIGN_CMS_GAP}</p>
+          <p className="text-[var(--color-muted)]">
+            Detached <code>.p7s</code> (when present) covers the <strong>original</strong>{' '}
+            PDF bytes before the appearance stamp — it will not verify the downloaded
+            stamped file.
+          </p>
         </div>
       </div>
 
@@ -167,7 +175,8 @@ export function CertSignTool() {
         />
         <span>
           I confirm I want an experimental certificate appearance (CN + date stamp +
-          PEM attachment), not a legally validated digital signature.
+          PEM and optional detached .p7s over original bytes), not an Adobe-validated
+          digital signature.
         </span>
       </label>
 
@@ -180,9 +189,11 @@ export function CertSignTool() {
 
       {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
       {error ? (
-        <p className="text-sm text-[var(--color-danger)]" role="alert">
-          {error}
-        </p>
+        <ToolError
+          message={error}
+          fileName={file?.name}
+          onRetry={() => setError(null)}
+        />
       ) : null}
     </ToolWorkbench>
   );

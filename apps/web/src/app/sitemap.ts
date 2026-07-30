@@ -54,6 +54,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.3,
     },
     {
+      path: '/cloud',
+      lastModified: '2026-07-30',
+      changeFrequency: 'monthly',
+      priority: 0.55,
+    },
+    {
       path: '/tools',
       lastModified: '2026-07-30',
       changeFrequency: 'weekly',

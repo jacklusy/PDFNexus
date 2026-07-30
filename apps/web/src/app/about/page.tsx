@@ -7,7 +7,7 @@ import { getAppUrl, pageMetadata } from '@/lib/seo';
 export const metadata: Metadata = pageMetadata({
   title: 'About',
   description:
-    'About PDFNexus — local PDF merge and organize with verified delivery.',
+    'About PDFNexus — local-first PDF tools with immediate downloads. Email and cloud are optional.',
   path: '/about',
 });
 
@@ -69,10 +69,16 @@ export default function AboutPage() {
             Principles
           </h2>
           <ul className="list-disc space-y-2 pl-5">
-            <li>Source files stay on-device during editing.</li>
+            <li>
+              Local tools keep source files on-device; optional Office→PDF and OCR
+              upload only after explicit consent.
+            </li>
             <li>Optional OCR is explicit and limited to page images.</li>
             <li>Analytics avoid filenames and document contents.</li>
-            <li>Verification is for delivery — not a password account.</li>
+            <li>
+              Email verification is optional delivery only — not required for local
+              downloads.
+            </li>
           </ul>
         </section>
         <div className="pt-8">

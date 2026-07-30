@@ -1,6 +1,6 @@
-# PDFNexus — Platform status (Phases 5–6)
+# PDFNexus — Platform status (Phases 5–8)
 
-Supersedes the remaining-work list in [PHASE5_STATUS.md](./PHASE5_STATUS.md) with Phase 6 completion notes. **No healthcare or legal compliance claims.**
+**No healthcare or legal compliance claims.** Browser/a11y rows below are a **manual QA checklist**, not a claim that every cell was validated in CI.
 
 ## Architecture
 
@@ -20,47 +20,54 @@ Supersedes the remaining-work list in [PHASE5_STATUS.md](./PHASE5_STATUS.md) wit
 | Server | Office→PDF | Document after consent |
 | Optional cloud | Drive / Dropbox / OneDrive | Only on explicit import/export + consent |
 
-Local downloads remain ungated. Email verification is optional delivery only.
+Local downloads remain ungated. Email verification is optional delivery only. Live marketing copy: [`apps/web/src/app/page.tsx`](../apps/web/src/app/page.tsx) (unused `MarketingHero` removed in Phase 7).
 
-## Phase 5 completed
+## Phase 5–6 (shipped)
 
-- Google Picker import (`drive.file`), 50MB caps, sanitized errors, single Redis token key
-- Production encryption required when any cloud provider is enabled
-- Copy honesty (About / MarketingHero / `dropHint`)
-- ToolError + batch cancel / file progress labels
-- Structural compress worker + canvas cleanup
-- Docs: `PHASE5_STATUS.md`, `PHASE5_A11Y_CHECKLIST.md`
+- Google Picker import, 50MB caps, sanitized Drive errors, single Redis token key
+- Dropbox + OneDrive OAuth, EPUB `/pdf-to-epub`, experimental cert-sign with detached `.p7s`
+- See also [PHASE5_STATUS.md](./PHASE5_STATUS.md)
 
-## Phase 6 completed
+## Phase 7 (review fixes)
 
-- **Dropbox + OneDrive** OAuth import/export (`/api/cloud/dropbox/*`, `/api/cloud/onedrive/*`), consent UI, `/cloud` page
-- **EPUB** `/pdf-to-epub` via HTML export packaging (reflowable; layout limits labeled)
-- **Cert-sign** detached PKCS#7 (`.p7s`) + PEM attachments; still **experimental** — not Adobe ByteRange CMS
-- Browser matrix + performance notes below
+- OAuth login CSRF: callback requires cookie session === OAuth `state` session
+- Shared encryption key resolver (`CLOUD_TOKEN_ENCRYPTION_KEY` preferred, else `GOOGLE_*`)
+- Fail-closed: reject plaintext Redis tokens when encryption key is set
+- Dropbox: metadata size gate before download; PDF-only export
+- OneDrive: `Files.ReadWrite.AppFolder` + approot list/upload; PDF-only export
+- Drive: session cookie only (no verified-email shortcut)
+- About metadata/principles honesty; cert `.p7s` covers **original** bytes only
+- Security unit tests: token-crypto, CSRF guard, PDF/size gates, env fail-closed
+
+## Phase 8 (closeout)
+
+- `/cloud` in sitemap; CertSign uses `ToolError`
+- Real EPUB smoke (`pdfToEpub` with mocked HTML); cert parse/honesty Vitest
+- Manual a11y checklist remains unchecked until humans run it
 
 ## §19 Performance notes
 
-- Prefer local tools for interactive editing; workers used for structural compress / split where feasible
-- Raster JPEG compress and PDF→images use main-thread canvas (GPU memory cleared after encode)
+- Prefer local tools; workers for structural compress / split where feasible
+- Raster JPEG compress and PDF→images use main-thread canvas (cleared after encode)
 - Cloud imports/exports capped at **50MB**
-- Batch queue runs jobs sequentially; cancel stops before the next pending job
+- Batch cancel stops before the next pending job (not mid-runner AbortSignal)
 
-## §20 Browser / device matrix (manual QA)
+## §20 Browser / device matrix (manual QA — not CI-validated)
 
 | Browser | Desktop | Notes |
 | --- | --- | --- |
-| Chromium (Chrome/Edge) | Primary | pdf.js + Offscreen/canvas paths tested here first |
-| Firefox | Supported | Confirm file download + workers |
-| Safari | Supported | Confirm File System / download quirks |
-| Mobile Safari / Chrome | Best-effort | Large PDFs may be memory-limited; batch less practical |
+| Chromium (Chrome/Edge) | Primary target | Run smoke here first |
+| Firefox | Manual | Confirm downloads + workers |
+| Safari | Manual | Confirm download quirks |
+| Mobile | Best-effort | Large PDFs may OOM |
 
 ## Known limitations / out of scope
 
-- Full existing-text editing (§9)
-- Adobe-validated /ByteRange CMS, TSA, LTV
+- Full existing-text editing (§9) — evaluation only; not implemented
+- Adobe-validated /ByteRange CMS, TSA, LTV — cert-sign stays experimental
 - In-workspace multi-op DAG
 - Claiming healthcare/legal/regulatory compliance
-- Drive still cannot browse the full library without Google Picker under `drive.file`
+- Drive still needs Google Picker under `drive.file` for arbitrary library files
 
 ## Env vars (cloud)
 
@@ -70,13 +77,11 @@ Local downloads remain ungated. Email verification is optional delivery only.
 | `GOOGLE_API_KEY` | Optional Picker developer key |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` or `CLOUD_TOKEN_ENCRYPTION_KEY` | AES-GCM at rest (32+, required in prod if any cloud enabled) |
 | `DROPBOX_CLIENT_ID` / `SECRET` / `REDIRECT_URI` | Dropbox |
-| `MICROSOFT_CLIENT_ID` / `SECRET` / `TENANT` / `REDIRECT_URI` | OneDrive |
+| `MICROSOFT_CLIENT_ID` / `SECRET` / `TENANT` / `REDIRECT_URI` | OneDrive AppFolder |
 
 ## Test commands
 
 ```bash
-cd apps/web && npm test
-cd apps/api && npm test
-cd apps/web && npm run typecheck
-cd apps/api && npm run typecheck
+cd apps/web && npm test && npm run typecheck
+cd apps/api && npm test && npm run typecheck
 ```

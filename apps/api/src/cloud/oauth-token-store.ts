@@ -1,6 +1,10 @@
 import { Logger } from '@nestjs/common';
 import type { CloudTokenRecord } from './cloud-provider';
-import { decryptToken, encryptToken } from './token-crypto';
+import {
+  decryptToken,
+  encryptToken,
+  isEncryptedPayload,
+} from './token-crypto';
 import { isCloudTokenEncryptionConfigured } from './encryption-key';
 
 export function serializeCloudTokenRecord(
@@ -30,6 +34,10 @@ export function serializeCloudTokenRecord(
   });
 }
 
+/**
+ * When an encryption key is configured, reject plaintext / undecryptable tokens
+ * (fail closed — do not accept Redis-injected plaintext).
+ */
 export function deserializeCloudTokenRecord(
   raw: string,
   encryptionKey: string,
@@ -39,15 +47,17 @@ export function deserializeCloudTokenRecord(
   let accessToken = parsed.accessToken;
 
   if (isCloudTokenEncryptionConfigured(encryptionKey)) {
-    try {
-      if (refreshToken) refreshToken = decryptToken(refreshToken, encryptionKey);
-    } catch {
-      // May be plaintext from before key was set
+    if (refreshToken) {
+      if (!isEncryptedPayload(refreshToken)) {
+        throw new Error('Rejecting plaintext refresh token while encryption key is set');
+      }
+      refreshToken = decryptToken(refreshToken, encryptionKey);
     }
-    try {
-      if (accessToken) accessToken = decryptToken(accessToken, encryptionKey);
-    } catch {
-      // ignore
+    if (accessToken) {
+      if (!isEncryptedPayload(accessToken)) {
+        throw new Error('Rejecting plaintext access token while encryption key is set');
+      }
+      accessToken = decryptToken(accessToken, encryptionKey);
     }
   }
 

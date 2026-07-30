@@ -32,7 +32,7 @@ export default function Page() {
         {
           question: 'Will Adobe Reader validate this signature?',
           answer:
-            'No. We attach a detached PKCS#7 over the original bytes and a PEM, but we do not embed a PDF signature dictionary with ByteRange. Do not claim Adobe-valid signing.',
+            'No. The optional detached .p7s covers the original PDF bytes before the appearance stamp — it will not verify the downloaded stamped file. We do not embed ByteRange CMS. Do not claim Adobe-valid signing.',
         },
         {
           question: 'Is this a legally binding digital signature?',

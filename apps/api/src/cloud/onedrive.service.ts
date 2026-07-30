@@ -7,11 +7,12 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { ErrorCodes } from '@pdfnexus/shared';
-import { MAX_CLOUD_FILE_BYTES } from './cloud-constants';
+import { MAX_CLOUD_FILE_BYTES, isPdfUpload } from './cloud-constants';
 import { CloudTokenStore } from './cloud-token-store';
 
 const PROVIDER = 'onedrive';
-const SCOPES = 'offline_access Files.ReadWrite User.Read';
+/** App-folder only — not full library Files.ReadWrite. */
+const SCOPES = 'offline_access Files.ReadWrite.AppFolder';
 
 @Injectable()
 export class OneDriveOAuthService {
@@ -194,54 +195,26 @@ export class OneDriveService {
 
   async listPdfFiles(sessionId: string) {
     const token = await this.requireToken(sessionId);
-    const q = encodeURIComponent(
-      "file ne null and endswith(name,'.pdf')",
-    );
     const res = await fetch(
-      `https://graph.microsoft.com/v1.0/me/drive/root/search(q='.pdf')?$top=40&$select=id,name,size,webUrl,file`,
+      `https://graph.microsoft.com/v1.0/me/drive/special/approot/children?$top=50&$select=id,name,size,webUrl,file`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
     if (!res.ok) {
-      // Fallback: recent children
-      const children = await fetch(
-        `https://graph.microsoft.com/v1.0/me/drive/root/children?$top=50&$select=id,name,size,webUrl,file`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      if (!children.ok) {
-        throw new ServiceUnavailableException({
-          error: 'Failed to list OneDrive files',
-          code: 'ONEDRIVE_REQUEST_FAILED',
-        });
-      }
-      const data = (await children.json()) as {
-        value?: Array<{
-          id?: string;
-          name?: string;
-          size?: number;
-          webUrl?: string;
-          file?: unknown;
-        }>;
-      };
-      return (data.value ?? [])
-        .filter((f) => f.id && f.name?.toLowerCase().endsWith('.pdf'))
-        .map((f) => ({
-          id: f.id!,
-          name: f.name!,
-          mimeType: 'application/pdf',
-          size: f.size != null ? String(f.size) : undefined,
-          webViewLink: f.webUrl,
-        }));
+      throw new ServiceUnavailableException({
+        error: 'Failed to list OneDrive app-folder files',
+        code: 'ONEDRIVE_REQUEST_FAILED',
+      });
     }
-    void q;
-    const json = (await res.json()) as {
+    const data = (await res.json()) as {
       value?: Array<{
         id?: string;
         name?: string;
         size?: number;
         webUrl?: string;
+        file?: unknown;
       }>;
     };
-    return (json.value ?? [])
+    return (data.value ?? [])
       .filter((f) => f.id && f.name?.toLowerCase().endsWith('.pdf'))
       .map((f) => ({
         id: f.id!,
@@ -314,10 +287,16 @@ export class OneDriveService {
         code: ErrorCodes.FILE_TOO_LARGE,
       });
     }
+    if (!isPdfUpload(file)) {
+      throw new BadRequestException({
+        error: 'Only PDF files can be exported to OneDrive',
+        code: ErrorCodes.FILE_INVALID,
+      });
+    }
     const token = await this.requireToken(sessionId);
     const name = encodeURIComponent(file.originalname || 'document.pdf');
     const res = await fetch(
-      `https://graph.microsoft.com/v1.0/me/drive/root:/${name}:/content`,
+      `https://graph.microsoft.com/v1.0/me/drive/special/approot:/${name}:/content`,
       {
         method: 'PUT',
         headers: {
@@ -329,7 +308,7 @@ export class OneDriveService {
     );
     if (!res.ok) {
       throw new ServiceUnavailableException({
-        error: 'Failed to upload file to OneDrive',
+        error: 'Failed to upload file to OneDrive app folder',
         code: 'ONEDRIVE_REQUEST_FAILED',
       });
     }
