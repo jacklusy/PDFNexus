@@ -4,7 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
-import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolWorkbench } from '../ToolWorkbench';
+import { useToolHandoff } from '../useToolHandoff';
 import { loadReadablePdf } from '../assertPdfReadable';
 import {
   REDACT_WARNING,
@@ -19,7 +20,7 @@ function makeId() {
 }
 
 export function RedactTool() {
-  const [files, setFiles] = useState<ToolFile[]>([]);
+  const { files, setFiles } = useToolHandoff();
   const [pageCount, setPageCount] = useState(0);
   const [regions, setRegions] = useState<(RedactRegion & { id: string })[]>([]);
   const [page, setPage] = useState(1);

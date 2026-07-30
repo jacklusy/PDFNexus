@@ -33,7 +33,7 @@ const envSchema = z.object({
   FILE_TTL_DAYS: z.coerce.number().int().positive().default(7),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(524_288_000),
   DOWNLOAD_TOKEN_TTL_HOURS: z.coerce.number().int().positive().default(24),
-  GOTENBERG_URL: z.string().url().default('http://localhost:3001'),
+  GOTENBERG_URL: z.string().url().optional(),
   GEMINI_API_KEY: z.string().optional().default(''),
   OCR_BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(6_291_456),
   OCR_MAX_BASE64_CHARS: z.coerce.number().int().positive().default(5_500_000),
@@ -94,12 +94,32 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
   const geminiApiKey =
     geminiRaw && geminiRaw !== 'MY_GEMINI_API_KEY' ? geminiRaw : null;
 
+  const isProduction = data.NODE_ENV === 'production';
+  let gotenbergUrl = data.GOTENBERG_URL?.trim() || '';
+  if (!gotenbergUrl) {
+    if (isProduction) {
+      throw new Error(
+        'Invalid environment configuration: GOTENBERG_URL is required in production'
+      );
+    }
+    gotenbergUrl = 'http://localhost:3001';
+  }
+  if (
+    isProduction &&
+    /localhost|127\.0\.0\.1/i.test(gotenbergUrl)
+  ) {
+    throw new Error(
+      'Invalid environment configuration: GOTENBERG_URL must not point at localhost in production'
+    );
+  }
+
   return {
     ...data,
+    GOTENBERG_URL: gotenbergUrl,
     SMTP_SECURE: Boolean(data.SMTP_SECURE),
     S3_FORCE_PATH_STYLE: data.S3_FORCE_PATH_STYLE !== false,
     allowedOrigins: [...origins],
     geminiApiKey,
-    isProduction: data.NODE_ENV === 'production',
+    isProduction,
   };
 }

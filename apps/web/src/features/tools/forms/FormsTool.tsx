@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
-import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolWorkbench } from '../ToolWorkbench';
+import { useToolHandoff } from '../useToolHandoff';
 import { loadReadablePdf } from '../assertPdfReadable';
 import {
   createFormFields,
@@ -16,7 +17,7 @@ function makeId() {
 }
 
 export function FormsTool() {
-  const [files, setFiles] = useState<ToolFile[]>([]);
+  const { files, setFiles } = useToolHandoff();
   const [pageCount, setPageCount] = useState(0);
   const [fields, setFields] = useState<(FormFieldSpec & { id: string })[]>([]);
   const [type, setType] = useState<FormFieldType>('text');
@@ -154,6 +155,9 @@ export function FormsTool() {
     >
       <p className="text-xs text-[var(--color-muted)]">
         Coordinates use PDF points with origin at the bottom-left of the page.
+        Date and Signature types create text widgets (pdf-lib has no native date/Sig
+        creators) — suitable as fillable placeholders, not Acrobat date/signature field
+        semantics.
       </p>
 
       <fieldset className="grid gap-3 rounded-xl border border-[var(--color-border)] p-3 sm:grid-cols-2">
@@ -169,12 +173,12 @@ export function FormsTool() {
             disabled={busy}
           >
             <option value="text">Text</option>
-            <option value="date">Date</option>
+            <option value="date">Date (text YYYY-MM-DD)</option>
             <option value="checkbox">Checkbox</option>
             <option value="radio">Radio group</option>
             <option value="dropdown">Dropdown</option>
             <option value="button">Button</option>
-            <option value="signature">Signature</option>
+            <option value="signature">Signature placeholder (text)</option>
           </select>
         </label>
         <label className="block text-sm text-[var(--color-muted)]">

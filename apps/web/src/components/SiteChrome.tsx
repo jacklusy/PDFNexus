@@ -36,6 +36,7 @@ const toolLinks = [
   { href: '/edit-links-pdf', label: 'Edit links' },
   { href: '/pdf-to-excel', label: 'PDF to Excel' },
   { href: '/pdf-to-pptx', label: 'PDF to PPTX' },
+  { href: '/pdf-to-powerpoint', label: 'PDF to PowerPoint' },
   { href: '/bates-numbering', label: 'Bates numbering' },
   { href: '/create-pdf-form', label: 'Create PDF form' },
   { href: '/redact-pdf', label: 'Redact PDF' },

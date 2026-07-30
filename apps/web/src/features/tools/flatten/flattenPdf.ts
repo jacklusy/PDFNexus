@@ -14,6 +14,18 @@ export interface FlattenPdfResult {
   annotationError?: string;
 }
 
+/** Fail-closed: refuse download unless user opts into forms-only partial export. */
+export function shouldRefuseFlattenDownload(
+  result: Pick<FlattenPdfResult, 'annotationError' | 'annotationsFlattened'>,
+  allowPartialFormsOnly: boolean
+): boolean {
+  return (
+    Boolean(result.annotationError) &&
+    !result.annotationsFlattened &&
+    !allowPartialFormsOnly
+  );
+}
+
 /**
  * Flatten AcroForm fields (pdf-lib) then annotations (pdfstudio / qpdf) when available.
  * Encrypted inputs are refused via loadReadablePdf / assertPdfReadable.

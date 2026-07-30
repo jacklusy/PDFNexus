@@ -37,6 +37,7 @@ import Sidebar from '@/components/Sidebar';
 import BulkControls from '@/components/BulkControls';
 import FullScreenPreviewModal from '@/components/FullScreenPreviewModal';
 import { compileMergedPdf, MERGE_OUTPUT_NAME, PreviewOrderModal } from '@/features/merge';
+import { navigateWorkspaceToTool } from '@/features/tools/navigateWorkspaceToTool';
 import {
   EmailVerifyModal,
   useDownloadGate,
@@ -1238,51 +1239,169 @@ export default function WorkspaceApp() {
         onConvertToWord={() => setIsConvertToWordOpen(true)}
         onExtractSelected={() => void handleExtractSelected()}
         onCropSelected={() => {
-          const sel = pages
-            .map((p, i) => (selectedPageIds.has(p.id) ? i + 1 : null))
-            .filter((n): n is number => n != null);
-          const q =
-            sel.length > 0 && sel.length < pages.length
-              ? `?pages=${sel.join(',')}`
-              : '';
-          window.location.href = `/crop-pdf${q}`;
+          void (async () => {
+            try {
+              await navigateWorkspaceToTool({
+                path: '/crop-pdf',
+                pages,
+                fileStore: fileStoreRef.current,
+                selectedPageIds,
+                includePageRange: true,
+              });
+            } catch (e) {
+              announce(
+                e instanceof Error ? e.message : 'Could not open Crop tool'
+              );
+            }
+          })();
         }}
         onResizeSelected={() => {
-          const sel = pages
-            .map((p, i) => (selectedPageIds.has(p.id) ? i + 1 : null))
-            .filter((n): n is number => n != null);
-          const q =
-            sel.length > 0 && sel.length < pages.length
-              ? `?pages=${sel.join(',')}`
-              : '';
-          window.location.href = `/resize-pdf${q}`;
+          void (async () => {
+            try {
+              await navigateWorkspaceToTool({
+                path: '/resize-pdf',
+                pages,
+                fileStore: fileStoreRef.current,
+                selectedPageIds,
+                includePageRange: true,
+              });
+            } catch (e) {
+              announce(
+                e instanceof Error ? e.message : 'Could not open Resize tool'
+              );
+            }
+          })();
         }}
         onFlattenSelected={() => {
-          window.location.href = '/flatten-pdf';
+          void (async () => {
+            try {
+              await navigateWorkspaceToTool({
+                path: '/flatten-pdf',
+                pages,
+                fileStore: fileStoreRef.current,
+                selectedPageIds,
+              });
+            } catch (e) {
+              announce(
+                e instanceof Error ? e.message : 'Could not open Flatten tool'
+              );
+            }
+          })();
         }}
         onExcelSelected={() => {
-          window.location.href = '/pdf-to-excel';
+          void (async () => {
+            try {
+              await navigateWorkspaceToTool({
+                path: '/pdf-to-excel',
+                pages,
+                fileStore: fileStoreRef.current,
+                selectedPageIds,
+              });
+            } catch (e) {
+              announce(
+                e instanceof Error ? e.message : 'Could not open Excel tool'
+              );
+            }
+          })();
         }}
         onPptxSelected={() => {
-          window.location.href = '/pdf-to-pptx';
+          void (async () => {
+            try {
+              await navigateWorkspaceToTool({
+                path: '/pdf-to-pptx',
+                pages,
+                fileStore: fileStoreRef.current,
+                selectedPageIds,
+              });
+            } catch (e) {
+              announce(
+                e instanceof Error ? e.message : 'Could not open PPTX tool'
+              );
+            }
+          })();
         }}
         onBatesSelected={() => {
-          window.location.href = '/bates-numbering';
+          void (async () => {
+            try {
+              await navigateWorkspaceToTool({
+                path: '/bates-numbering',
+                pages,
+                fileStore: fileStoreRef.current,
+                selectedPageIds,
+              });
+            } catch (e) {
+              announce(
+                e instanceof Error ? e.message : 'Could not open Bates tool'
+              );
+            }
+          })();
         }}
         onRedactSelected={() => {
-          window.location.href = '/redact-pdf';
+          void (async () => {
+            try {
+              await navigateWorkspaceToTool({
+                path: '/redact-pdf',
+                pages,
+                fileStore: fileStoreRef.current,
+                selectedPageIds,
+              });
+            } catch (e) {
+              announce(
+                e instanceof Error ? e.message : 'Could not open Redact tool'
+              );
+            }
+          })();
         }}
         onFormSelected={() => {
-          window.location.href = '/create-pdf-form';
+          void (async () => {
+            try {
+              await navigateWorkspaceToTool({
+                path: '/create-pdf-form',
+                pages,
+                fileStore: fileStoreRef.current,
+                selectedPageIds,
+              });
+            } catch (e) {
+              announce(
+                e instanceof Error ? e.message : 'Could not open Form tool'
+              );
+            }
+          })();
         }}
         onHtmlSelected={() => {
-          window.location.href = '/pdf-to-html';
+          void (async () => {
+            try {
+              await navigateWorkspaceToTool({
+                path: '/pdf-to-html',
+                pages,
+                fileStore: fileStoreRef.current,
+                selectedPageIds,
+              });
+            } catch (e) {
+              announce(
+                e instanceof Error ? e.message : 'Could not open HTML tool'
+              );
+            }
+          })();
         }}
         onOfficeSelected={() => {
           window.location.href = '/office-to-pdf';
         }}
         onCertSignSelected={() => {
-          window.location.href = '/cert-sign-pdf';
+          void (async () => {
+            try {
+              await navigateWorkspaceToTool({
+                path: '/cert-sign-pdf',
+                pages,
+                fileStore: fileStoreRef.current,
+                selectedPageIds,
+              });
+            } catch (e) {
+              announce(
+                e instanceof Error ? e.message : 'Could not open Cert sign tool'
+              );
+            }
+          })();
         }}
       />
 

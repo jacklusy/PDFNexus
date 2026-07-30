@@ -4,7 +4,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { loadReadablePdf } from '../assertPdfReadable';
-import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolWorkbench } from '../ToolWorkbench';
+import { useToolHandoff } from '../useToolHandoff';
 import { parsePageRanges, PageRangeError } from '../parsePageRanges';
 import { PagePreviewCanvas } from '../PagePreviewCanvas';
 import {
@@ -21,7 +22,14 @@ import {
 import { resizePdf } from './resizePdf';
 
 export function ResizeTool() {
-  const [files, setFiles] = useState<ToolFile[]>([]);
+  const urlPagesRef = useRef<string | null>(null);
+  const { files, setFiles } = useToolHandoff({
+    onPages: (pages) => {
+      urlPagesRef.current = pages;
+      setUseRange(true);
+      setRangeText(pages);
+    },
+  });
   const [pageCount, setPageCount] = useState(0);
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
   const [activePage, setActivePage] = useState(1);
@@ -38,7 +46,6 @@ export function ResizeTool() {
   const [progress, setProgress] = useState<string | null>(null);
 
   const file = files[0]?.file;
-  const urlPagesRef = useRef<string | null>(null);
 
   const targetPt = useMemo(() => {
     try {

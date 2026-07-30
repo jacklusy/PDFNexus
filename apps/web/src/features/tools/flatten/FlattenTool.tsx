@@ -4,12 +4,14 @@ import React, { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
-import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
-import { FLATTEN_WARNING, flattenPdf } from './flattenPdf';
+import { ToolWorkbench } from '../ToolWorkbench';
+import { useToolHandoff } from '../useToolHandoff';
+import { FLATTEN_WARNING, flattenPdf, shouldRefuseFlattenDownload } from './flattenPdf';
 
 export function FlattenTool() {
-  const [files, setFiles] = useState<ToolFile[]>([]);
+  const { files, setFiles } = useToolHandoff();
   const [understood, setUnderstood] = useState(false);
+  const [allowPartial, setAllowPartial] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
@@ -24,6 +26,17 @@ export function FlattenTool() {
     try {
       const bytes = await file.arrayBuffer();
       const result = await flattenPdf(bytes);
+      const annotationFailed =
+        Boolean(result.annotationError) && !result.annotationsFlattened;
+
+      if (shouldRefuseFlattenDownload(result, allowPartial)) {
+        setError(
+          `Annotation flatten failed: ${result.annotationError}. Check “Download forms-only result” to export anyway, or fix the PDF and retry.`
+        );
+        setProgress(null);
+        return;
+      }
+
       const name = file.name.replace(/\.pdf$/i, '') + '-flattened.pdf';
       downloadBlobLocally(
         new Blob([result.bytes], { type: 'application/pdf' }),
@@ -36,15 +49,10 @@ export function FlattenTool() {
       let status = parts.length
         ? `Downloaded (flattened: ${parts.join(' + ')})`
         : 'Downloaded (no form fields found)';
-      if (result.annotationError) {
-        status += `. Annotation flatten failed: ${result.annotationError}`;
+      if (annotationFailed) {
+        status += ` — annotations NOT flattened (${result.annotationError})`;
       }
       setProgress(status);
-      if (result.annotationError && !result.annotationsFlattened) {
-        setError(
-          `Forms may be flattened, but annotations were not: ${result.annotationError}`
-        );
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setProgress(null);
@@ -61,6 +69,7 @@ export function FlattenTool() {
       onFilesChange={(next) => {
         setFiles(next);
         setUnderstood(false);
+        setAllowPartial(false);
         setError(null);
         setProgress(null);
       }}
@@ -78,18 +87,13 @@ export function FlattenTool() {
     >
       <div
         className="flex gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-accent-soft)]/40 p-4"
-        role="alert"
+        role="note"
       >
         <AlertTriangle
           className="mt-0.5 h-5 w-5 shrink-0 text-[var(--color-accent)]"
           aria-hidden
         />
-        <div className="space-y-2 text-sm">
-          <p className="font-semibold text-[var(--color-ink)]">
-            Permanently non-editable
-          </p>
-          <p className="text-[var(--color-muted)]">{FLATTEN_WARNING}</p>
-        </div>
+        <p className="text-sm text-[var(--color-muted)]">{FLATTEN_WARNING}</p>
       </div>
 
       <label className="flex items-start gap-2 text-sm">
@@ -100,9 +104,20 @@ export function FlattenTool() {
           onChange={(e) => setUnderstood(e.target.checked)}
           disabled={busy || !file}
         />
+        <span>I understand flattening is permanent and irreversible.</span>
+      </label>
+
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={allowPartial}
+          onChange={(e) => setAllowPartial(e.target.checked)}
+          disabled={busy || !file}
+        />
         <span>
-          I understand that flattening makes form fields and annotations permanently
-          non-editable.
+          Download forms-only result if annotation flatten fails (annotations may
+          remain editable)
         </span>
       </label>
 

@@ -4,12 +4,13 @@ import React, { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
-import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolWorkbench } from '../ToolWorkbench';
+import { useToolHandoff } from '../useToolHandoff';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { pdfToHtml } from './pdfToHtml';
 
 export function PdfToHtmlTool() {
-  const [files, setFiles] = useState<ToolFile[]>([]);
+  const { files, setFiles } = useToolHandoff();
   const [html, setHtml] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

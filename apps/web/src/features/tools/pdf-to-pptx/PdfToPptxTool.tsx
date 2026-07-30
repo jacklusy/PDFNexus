@@ -3,13 +3,14 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
-import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolWorkbench } from '../ToolWorkbench';
+import { useToolHandoff } from '../useToolHandoff';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { parsePageRanges } from '../parsePageRanges';
 import { pdfToPptx } from './pdfToPptx';
 
 export function PdfToPptxTool() {
-  const [files, setFiles] = useState<ToolFile[]>([]);
+  const { files, setFiles } = useToolHandoff();
   const [pageCount, setPageCount] = useState(0);
   const [rangeText, setRangeText] = useState('');
   const [scale, setScale] = useState(2);

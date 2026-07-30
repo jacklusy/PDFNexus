@@ -4,14 +4,15 @@ import React, { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
-import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolWorkbench } from '../ToolWorkbench';
+import { useToolHandoff } from '../useToolHandoff';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { detectTables, type DetectedTable } from './detectTables';
 import { canRunOcrTableDetect, detectTablesViaOcr } from './ocrTables';
 import { pdfToExcel } from './pdfToExcel';
 
 export function PdfToExcelTool() {
-  const [files, setFiles] = useState<ToolFile[]>([]);
+  const { files, setFiles } = useToolHandoff();
   const [tables, setTables] = useState<DetectedTable[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [ocrConsent, setOcrConsent] = useState(false);

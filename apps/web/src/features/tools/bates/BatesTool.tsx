@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
-import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolWorkbench } from '../ToolWorkbench';
+import { useToolHandoff } from '../useToolHandoff';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { parsePageRanges } from '../parsePageRanges';
 import { zipOutputs } from '../zipOutputs';
@@ -34,7 +35,7 @@ function writeStoredNext(n: number) {
 }
 
 export function BatesTool() {
-  const [files, setFiles] = useState<ToolFile[]>([]);
+  const { files, setFiles } = useToolHandoff();
   const [pageCount, setPageCount] = useState(0);
   const [rangeText, setRangeText] = useState('');
   const [start, setStart] = useState(1);

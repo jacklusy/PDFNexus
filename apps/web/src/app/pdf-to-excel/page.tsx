@@ -21,10 +21,10 @@ export default function Page() {
         'Review detected tables and choose which sheets to keep.',
         'Export an .xlsx file processed in your browser.',
       ]}
-      privacyNote="This tool runs in your browser. Your file is not uploaded to process it. Optional OCR (if enabled later) would require separate consent."
+      privacyNote="Local table detection never uploads. Optional OCR uploads page images to the API only after you check the consent box."
       limits={[
         'Works best on digital PDFs with aligned columns; layout is approximate.',
-        'Scanned PDFs without a text layer will not yield tables unless OCR is used.',
+        'Scanned PDFs without a text layer need the optional OCR path (with consent).',
         'Merged cells, nested tables, and complex borders are not reconstructed.',
       ]}
       faqs={[
@@ -36,7 +36,7 @@ export default function Page() {
         {
           question: 'Does this upload my PDF?',
           answer:
-            'No. Table detection and .xlsx generation run locally. Your file is not uploaded for this conversion.',
+            'Not for local detection. If you enable OCR table detection, page images are uploaded to the conversion API with your explicit consent.',
         },
       ]}
       related={[

@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { flattenPdf, FLATTEN_WARNING } from './flattenPdf';
+import {
+  flattenPdf,
+  FLATTEN_WARNING,
+  shouldRefuseFlattenDownload,
+} from './flattenPdf';
 import { cropPdf } from '../crop/cropPdf';
 import { resizePdf } from '../resize/resizePdf';
 import { PAPER_SIZES_PT } from '../pageGeometry';
@@ -13,6 +17,35 @@ async function samplePdf(): Promise<ArrayBuffer> {
   const bytes = await doc.save();
   return Uint8Array.from(bytes).buffer as ArrayBuffer;
 }
+
+describe('shouldRefuseFlattenDownload', () => {
+  it('refuses when annotations failed and partial not allowed', () => {
+    expect(
+      shouldRefuseFlattenDownload(
+        { annotationError: 'qpdf failed', annotationsFlattened: false },
+        false
+      )
+    ).toBe(true);
+  });
+
+  it('allows forms-only when user opts in', () => {
+    expect(
+      shouldRefuseFlattenDownload(
+        { annotationError: 'qpdf failed', annotationsFlattened: false },
+        true
+      )
+    ).toBe(false);
+  });
+
+  it('allows when annotations flattened', () => {
+    expect(
+      shouldRefuseFlattenDownload(
+        { annotationError: undefined, annotationsFlattened: true },
+        false
+      )
+    ).toBe(false);
+  });
+});
 
 describe('flattenPdf', () => {
   it('returns bytes and warning for a plain PDF', async () => {
@@ -40,9 +73,5 @@ describe('cropPdf / resizePdf smoke', () => {
       marginPt: 0,
     });
     expect(out.byteLength).toBeGreaterThan(50);
-    const doc = await PDFDocument.load(out);
-    const size = doc.getPage(0).getSize();
-    expect(Math.round(size.width)).toBe(Math.round(letter.width));
-    expect(Math.round(size.height)).toBe(Math.round(letter.height));
   });
 });

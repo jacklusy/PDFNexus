@@ -39,10 +39,18 @@ export const PHASE3_TOOL_ROUTES = [
 
 export type Phase3ToolRoute = (typeof PHASE3_TOOL_ROUTES)[number];
 
+/** Task.md SEO aliases that redirect to primary tool routes. */
+export const TOOL_ROUTE_ALIASES = ['/pdf-to-powerpoint'] as const;
+
 export const TOOL_ROUTES = [
   ...PHASE1_TOOL_ROUTES,
   ...PHASE2_TOOL_ROUTES,
   ...PHASE3_TOOL_ROUTES,
+] as const;
+
+export const SITEMAP_TOOL_ROUTES = [
+  ...TOOL_ROUTES,
+  ...TOOL_ROUTE_ALIASES,
 ] as const;
 
 export type ToolRoute = (typeof TOOL_ROUTES)[number];

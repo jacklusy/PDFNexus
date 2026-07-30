@@ -5,7 +5,8 @@ import { AlertTriangle, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
-import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolWorkbench } from '../ToolWorkbench';
+import { useToolHandoff } from '../useToolHandoff';
 import { clearPassword } from '../protect/pdfToolkit';
 import {
   CERT_SIGN_EXPERIMENTAL_NOTICE,
@@ -13,7 +14,7 @@ import {
 } from './certSignPdf';
 
 export function CertSignTool() {
-  const [files, setFiles] = useState<ToolFile[]>([]);
+  const { files, setFiles } = useToolHandoff();
   const [p12File, setP12File] = useState<File | null>(null);
   const [password, setPassword] = useState('');
   const [confirmAppearance, setConfirmAppearance] = useState(false);

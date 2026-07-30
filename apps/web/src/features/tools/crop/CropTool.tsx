@@ -4,7 +4,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { loadReadablePdf } from '../assertPdfReadable';
-import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolWorkbench } from '../ToolWorkbench';
+import { useToolHandoff } from '../useToolHandoff';
 import { parsePageRanges, PageRangeError } from '../parsePageRanges';
 import { PagePreviewCanvas } from '../PagePreviewCanvas';
 import {
@@ -21,7 +22,15 @@ import { cropPdf } from './cropPdf';
 type PageMode = 'all' | 'selected';
 
 export function CropTool() {
-  const [files, setFiles] = useState<ToolFile[]>([]);
+  /** Workspace bulk handoff (`?pages=1-3`) — must survive file-load reset. */
+  const urlPagesRef = useRef<string | null>(null);
+  const { files, setFiles } = useToolHandoff({
+    onPages: (pages) => {
+      urlPagesRef.current = pages;
+      setPageMode('selected');
+      setRangeText(pages);
+    },
+  });
   const [pageCount, setPageCount] = useState(0);
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
   const [pageMode, setPageMode] = useState<PageMode>('all');
@@ -34,8 +43,6 @@ export function CropTool() {
   const [progress, setProgress] = useState<string | null>(null);
 
   const file = files[0]?.file;
-  /** Workspace bulk handoff (`?pages=1-3`) — must survive file-load reset. */
-  const urlPagesRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
