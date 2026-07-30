@@ -7,11 +7,20 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { ErrorCodes } from '@pdfnexus/shared';
-import { MAX_CLOUD_FILE_BYTES, isPdfUpload } from './cloud-constants';
+import {
+  MAX_CLOUD_FILE_BYTES,
+  isCloudPdfMeta,
+  isCloudTokenConnected,
+  isPdfUpload,
+} from './cloud-constants';
 import { CloudTokenStore } from './cloud-token-store';
 
 const PROVIDER = 'dropbox';
-const SCOPES = 'files.content.read files.content.write files.metadata.read';
+/**
+ * App-folder Dropbox apps root the API at the app folder.
+ * Do not use full-account search — list the app-folder root only.
+ */
+const SCOPES = 'files.content.read files.content.write';
 
 @Injectable()
 export class DropboxOAuthService {
@@ -116,6 +125,20 @@ export class DropboxOAuthService {
     await this.tokens.clearTokens(PROVIDER, sessionId);
   }
 
+  /** Best-effort Dropbox token revoke; always clears Redis afterward via caller. */
+  async revokeAccess(sessionId: string): Promise<void> {
+    try {
+      const token = await this.getAccessToken(sessionId);
+      if (!token) return;
+      await fetch('https://api.dropboxapi.com/2/auth/token/revoke', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      /* fail soft */
+    }
+  }
+
   async getAccessToken(sessionId: string): Promise<string | null> {
     this.tokens.assertEncryptionReady('Dropbox');
     const record = await this.tokens.getTokens(PROVIDER, sessionId);
@@ -158,7 +181,7 @@ export class DropboxOAuthService {
   async isConnected(sessionId: string): Promise<boolean> {
     if (!this.isConfigured()) return false;
     const record = await this.tokens.getTokens(PROVIDER, sessionId);
-    return Boolean(record?.refreshToken || record?.accessToken);
+    return isCloudTokenConnected(record);
   }
 }
 
@@ -178,48 +201,61 @@ export class DropboxService {
     return token;
   }
 
+  /** Lists PDFs in the Dropbox app folder root (App Folder permission). */
   async listPdfFiles(sessionId: string) {
     const token = await this.requireToken(sessionId);
-    const res = await fetch('https://api.dropboxapi.com/2/files/search_v2', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query: '.pdf',
-        options: {
-          file_status: 'active',
-          filename_only: true,
-          max_results: 40,
+    const entries: Array<{
+      ['.tag']?: string;
+      id?: string;
+      name?: string;
+      size?: number;
+      path_display?: string;
+    }> = [];
+    let cursor: string | undefined;
+    let hasMore = true;
+
+    while (hasMore && entries.length < 100) {
+      const res = await fetch(
+        cursor
+          ? 'https://api.dropboxapi.com/2/files/list_folder/continue'
+          : 'https://api.dropboxapi.com/2/files/list_folder',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(
+            cursor
+              ? { cursor }
+              : { path: '', recursive: false, limit: 100 },
+          ),
         },
-      }),
-    });
-    if (!res.ok) {
-      throw new ServiceUnavailableException({
-        error: 'Failed to list Dropbox files',
-        code: 'DROPBOX_REQUEST_FAILED',
-      });
+      );
+      if (!res.ok) {
+        throw new ServiceUnavailableException({
+          error: 'Failed to list Dropbox app folder',
+          code: 'DROPBOX_REQUEST_FAILED',
+        });
+      }
+      const json = (await res.json()) as {
+        entries?: typeof entries;
+        cursor?: string;
+        has_more?: boolean;
+      };
+      entries.push(...(json.entries ?? []));
+      hasMore = Boolean(json.has_more);
+      cursor = json.cursor;
     }
-    const json = (await res.json()) as {
-      matches?: Array<{
-        metadata?: {
-          metadata?: {
-            ['.tag']?: string;
-            id?: string;
-            name?: string;
-            size?: number;
-            path_display?: string;
-          };
-        };
-      }>;
-    };
-    return (json.matches ?? [])
-      .map((m) => m.metadata?.metadata)
+
+    return entries
       .filter(
-        (f): f is NonNullable<typeof f> =>
-          Boolean(f?.id && f?.name?.toLowerCase().endsWith('.pdf')),
+        (f) =>
+          f['.tag'] === 'file' &&
+          Boolean(f.id) &&
+          Boolean(f.name?.toLowerCase().endsWith('.pdf')),
       )
+      .slice(0, 50)
       .map((f) => ({
         id: f.id!,
         name: f.name!,
@@ -259,10 +295,17 @@ export class DropboxService {
       name?: string;
       size?: number;
       ['.tag']?: string;
+      path_display?: string;
     };
     if (meta['.tag'] === 'folder') {
       throw new BadRequestException({
         error: 'Cannot import a Dropbox folder',
+        code: ErrorCodes.FILE_INVALID,
+      });
+    }
+    if (!isCloudPdfMeta({ name: meta.name })) {
+      throw new BadRequestException({
+        error: 'Only PDF files can be imported from Dropbox',
         code: ErrorCodes.FILE_INVALID,
       });
     }

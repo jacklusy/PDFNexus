@@ -4,26 +4,26 @@ import { ToolPageShell } from '@/features/tools/ToolPageShell';
 import { OverlayTool } from '@/features/tools/overlays/OverlayTool';
 
 export const metadata: Metadata = pageMetadata({
-  title: 'Edit PDF Online — Add Text and Shapes to PDF',
+  title: 'Add Text & Shapes to PDF — Overlay Edit (Not Full Text Edit)',
   description:
-    'Annotate PDFs with text, shapes, callouts, and freehand. Position overlays, then export into a flattened copy — free, local, no upload.',
+    'Add text, shapes, callouts, and freehand overlays onto PDF pages. Does not rewrite existing PDF text. Free, local, no upload.',
   path: '/edit-pdf',
 });
 
 export default function Page() {
   return (
     <ToolPageShell
-      title="Edit PDF"
-      description="Add text, rectangles, ellipses, lines, arrows, callouts, and freehand strokes on top of your PDF pages. Export overlays into the document."
+      title="Add text & shapes"
+      description="Overlay text, rectangles, ellipses, lines, arrows, callouts, and freehand strokes on PDF pages. This is not full existing-text editing."
       path="/edit-pdf"
       howItWorks={[
-        'Upload the PDF you want to annotate.',
+        'Upload the PDF you want to mark up.',
         'Add text, shapes, callouts, or freehand drawings on the active page.',
-        'Download the edited PDF with overlays exported into the pages.',
+        'Download a copy with overlays exported into the pages.',
       ]}
       privacyNote="This tool runs in your browser. Your file is not uploaded to process it."
       limits={[
-        'Adds overlay content; it does not edit existing text inside the PDF structure.',
+        'Adds overlay content only; it does not edit existing text inside the PDF structure (§9 full text edit is out of scope).',
         'Best for labels, callouts, and simple markup — not full document rewriting.',
         'Complex layouts may need the full workspace for additional operations.',
       ]}

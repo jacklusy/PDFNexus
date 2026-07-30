@@ -449,7 +449,10 @@ export class CloudController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ ok: true }> {
     const sessionId = this.readProviderSession(req, DROPBOX_SESSION_COOKIE);
-    if (sessionId) await this.dropboxOauth.clearTokens(sessionId);
+    if (sessionId) {
+      await this.dropboxOauth.revokeAccess(sessionId);
+      await this.dropboxOauth.clearTokens(sessionId);
+    }
     this.clearProviderSessionCookie(res, DROPBOX_SESSION_COOKIE);
     return { ok: true };
   }
@@ -598,7 +601,10 @@ export class CloudController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ ok: true }> {
     const sessionId = this.readProviderSession(req, ONEDRIVE_SESSION_COOKIE);
-    if (sessionId) await this.onedriveOauth.clearTokens(sessionId);
+    if (sessionId) {
+      await this.onedriveOauth.revokeAccess(sessionId);
+      await this.onedriveOauth.clearTokens(sessionId);
+    }
     this.clearProviderSessionCookie(res, ONEDRIVE_SESSION_COOKIE);
     return { ok: true };
   }

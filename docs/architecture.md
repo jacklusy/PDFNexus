@@ -7,14 +7,18 @@
 | Upload / parse PDF & images | Browser |
 | Reorder, rotate, delete, blank, insert | Browser |
 | Thumbnails & fullscreen preview | Browser (pdf.js, self-hosted worker) |
-| Merge (pdf-lib) | Browser worker with main-thread fallback |
-| PDF → Word (docx) | Browser; optional OCR via API |
+| Merge / split / extract / compress (structural) | Browser (module workers where wired) |
+| Overlay edit (text & shapes), annotate, forms | Browser |
+| PDF → Word / Excel / EPUB | Browser; optional OCR via API where applicable |
+| Office → PDF | NestJS → Gotenberg (after consent) |
+| Experimental cert-sign | Browser (appearance + PEM/PKCS#7 **attachments**) |
+| Optional cloud import/export | NestJS OAuth proxies (Drive / Dropbox App Folder / OneDrive AppFolder) |
 | Email OTP verification | NestJS + Redis + mail queue |
 | Final artifact storage | S3-compatible (MinIO/S3/R2) |
 | Email delivery of finals | BullMQ + SMTP/Resend |
 | Analytics & feedback | NestJS + PostgreSQL |
 
-Source uploads are **never** stored on the server. Only finals linked to a verified email are retained until TTL expiry.
+Source uploads for local tools are **never** stored on the server. Cloud import/export and Office→PDF send bytes only after explicit consent. Only finals linked to a verified email are retained until TTL expiry.
 
 ## Backend modules (`apps/api`)
 
@@ -22,11 +26,21 @@ Source uploads are **never** stored on the server. Only finals linked to a verif
 - `AuthEmail` — request OTP, verify, signed cookie, `/api/auth/me`
 - `Files` — direct-to-storage upload sessions, signed download, cleanup
 - `Ocr` — Gemini page OCR with Redis guards
+- `Convert` / Gotenberg — Office → PDF
+- `Cloud` — Google Drive (`drive.file`), Dropbox App Folder, OneDrive AppFolder OAuth + PDF-only import/export (50MB)
 - `Analytics` — event ingest + summary aggregates
 - `Feedback` — ratings, bugs, features, comments
 - `Mail` / `Jobs` — OTP + attachment queues
 - `Storage` — S3 put/get/delete/presign + multipart (create/presign part/list/complete/abort)
 - `Prisma` — PostgreSQL schema
+
+## Cloud OAuth (optional)
+
+- Session cookies per provider; OAuth `state` must match cookie (login CSRF).
+- Tokens encrypted at rest (`CLOUD_TOKEN_ENCRYPTION_KEY` or `GOOGLE_TOKEN_ENCRYPTION_KEY`).
+- Disconnect: best-effort provider revoke, then clear Redis.
+- PDF gate: `application/pdf` **or** `.pdf` name — never bare `application/octet-stream`.
+- Dropbox / OneDrive: **app folder only** (not full library).
 
 ## Direct-to-storage uploads
 
@@ -83,8 +97,9 @@ endpoint origin must be present in the web CSP `connect-src`
 
 - `/` — marketing hero (brand-first)
 - `/workspace` — full tool
+- `/cloud` — optional Drive / Dropbox / OneDrive connections
 - `/about`, `/privacy`, `/terms`, `/guide`, `/feedback`
-- SEO: metadata API, sitemap, robots, Open Graph
+- SEO tool pages (honest capability copy — e.g. Add text & shapes ≠ full §9 text edit)
 - Virtualized page grid for large documents
 - Accessible dialogs, live announcements, reduced-motion support
 - Inactive AdSense slot components
@@ -98,6 +113,6 @@ endpoint origin must be present in the web CSP `connect-src`
 ## Scaling notes
 
 - Stateless NestJS instances behind a load balancer (`TRUST_PROXY=1`)
-- Redis for rate limits, OCR concurrency/budget, BullMQ
+- Redis for rate limits, OCR concurrency/budget, BullMQ, cloud OAuth tokens
 - Shared S3 bucket; horizontal web/API replicas
 - CDN in front of Next.js static assets

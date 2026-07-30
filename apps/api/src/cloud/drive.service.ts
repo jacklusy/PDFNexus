@@ -7,7 +7,12 @@ import {
 import { ErrorCodes } from '@pdfnexus/shared';
 import { GoogleOAuthService } from './google-oauth.service';
 
-import { MAX_CLOUD_FILE_BYTES } from './cloud-constants';
+import {
+  MAX_CLOUD_FILE_BYTES,
+  isCloudPdfMeta,
+  isCloudTokenConnected,
+  isPdfUpload,
+} from './cloud-constants';
 
 export { MAX_CLOUD_FILE_BYTES };
 /** @deprecated Use MAX_CLOUD_FILE_BYTES */
@@ -29,10 +34,11 @@ export class DriveService {
   async isConnected(sessionId: string): Promise<boolean> {
     if (!this.oauth.isConfigured()) return false;
     const record = await this.oauth.getTokenRecord(sessionId);
-    return Boolean(record?.refreshToken || record?.accessToken);
+    return isCloudTokenConnected(record);
   }
 
   async disconnect(sessionId: string): Promise<void> {
+    await this.oauth.revokeAccess(sessionId);
     await this.oauth.clearTokens(sessionId);
   }
 
@@ -112,6 +118,13 @@ export class DriveService {
       size?: string;
     };
 
+    if (!isCloudPdfMeta({ name: meta.name, mimeType: meta.mimeType })) {
+      throw new BadRequestException({
+        error: 'Only PDF files can be imported from Drive',
+        code: ErrorCodes.FILE_INVALID,
+      });
+    }
+
     const sizeNum = meta.size ? Number(meta.size) : NaN;
     if (Number.isFinite(sizeNum) && sizeNum > MAX_DRIVE_FILE_BYTES) {
       throw new BadRequestException({
@@ -160,13 +173,7 @@ export class DriveService {
       });
     }
 
-    const mime = (file.mimetype || '').toLowerCase();
-    const nameLower = (file.originalname || '').toLowerCase();
-    const okMime =
-      mime === 'application/pdf' ||
-      mime === 'application/octet-stream' ||
-      nameLower.endsWith('.pdf');
-    if (!okMime) {
+    if (!isPdfUpload(file)) {
       throw new BadRequestException({
         error: 'Only PDF files can be exported to Drive',
         code: ErrorCodes.FILE_INVALID,

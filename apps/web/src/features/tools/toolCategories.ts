@@ -56,7 +56,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     description:
       'Add text, shapes, watermarks, annotations, forms, Bates numbers, and redaction.',
     tools: [
-      { href: '/edit-pdf', label: 'Edit PDF', blurb: 'Text, shapes, callouts, freehand.' },
+      { href: '/edit-pdf', label: 'Add text & shapes', blurb: 'Overlays only — not full existing-text edit.' },
       { href: '/annotate-pdf', label: 'Annotate', blurb: 'Highlights and comments.' },
       { href: '/watermark-pdf', label: 'Watermark', blurb: 'Stamp text across pages.' },
       { href: '/page-numbers-pdf', label: 'Page numbers', blurb: 'Header/footer numbers.' },

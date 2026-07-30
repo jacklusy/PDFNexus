@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolError } from '../ToolError';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { flattenOverlays } from '../overlays/flattenOverlays';
 import {
@@ -358,10 +359,8 @@ export function AnnotateTool() {
         </aside>
 
         {error ? (
-          <p className="text-sm text-[var(--color-danger)]" role="alert">
-            {error}
-          </p>
-        ) : null}
+        <ToolError message={error} fileName={file?.name} onRetry={() => setError(null)} />
+      ) : null}
         {progress ? (
           <p className="text-sm text-[var(--color-muted)]" aria-live="polite">
             {progress}

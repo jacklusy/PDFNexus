@@ -6,6 +6,7 @@ import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { DriveExportButton } from '@/features/cloud/DriveExportButton';
 import { ToolWorkbench } from '../ToolWorkbench';
+import { ToolError } from '../ToolError';
 import { useToolHandoff } from '../useToolHandoff';
 import { FLATTEN_WARNING, flattenPdf, shouldRefuseFlattenDownload } from './flattenPdf';
 
@@ -126,9 +127,7 @@ export function FlattenTool() {
 
       {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
       {error ? (
-        <p className="text-sm text-[var(--color-danger)]" role="alert">
-          {error}
-        </p>
+        <ToolError message={error} fileName={file?.name} onRetry={() => setError(null)} />
       ) : null}
 
       {lastPdf ? <DriveExportButton file={lastPdf} disabled={busy} /> : null}

@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench } from '../ToolWorkbench';
+import { ToolError } from '../ToolError';
 import { ToolProgress } from '../ToolProgress';
 import { useTimedProgress } from '../useTimedProgress';
 import { useToolHandoff } from '../useToolHandoff';
@@ -172,9 +173,7 @@ export function PdfToPptxTool() {
         <p className="text-sm text-[var(--color-muted)]">{progress}</p>
       ) : null}
       {error ? (
-        <p className="text-sm text-[var(--color-danger)]" role="alert">
-          {error}
-        </p>
+        <ToolError message={error} fileName={file?.name} onRetry={() => setError(null)} />
       ) : null}
     </ToolWorkbench>
   );

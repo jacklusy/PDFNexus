@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { ErrorCodes } from '@pdfnexus/shared';
-import { MAX_CLOUD_FILE_BYTES, isPdfUpload } from './cloud-constants';
+import { MAX_CLOUD_FILE_BYTES, isCloudPdfMeta, isCloudTokenConnected, isPdfUpload } from './cloud-constants';
 import { CloudTokenStore } from './cloud-token-store';
 
 const PROVIDER = 'onedrive';
@@ -125,6 +125,26 @@ export class OneDriveOAuthService {
     await this.tokens.clearTokens(PROVIDER, sessionId);
   }
 
+  /**
+   * Best-effort Microsoft token cleanup. Azure AD has no RFC 7009 revoke for
+   * delegated refresh tokens; we clear local storage and soft-fail any network attempt.
+   */
+  async revokeAccess(sessionId: string): Promise<void> {
+    try {
+      const token = await this.getAccessToken(sessionId);
+      if (!token) return;
+      await fetch(
+        `https://login.microsoftonline.com/${this.tenant}/oauth2/v2.0/logout`,
+        {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+    } catch {
+      /* fail soft */
+    }
+  }
+
   async getAccessToken(sessionId: string): Promise<string | null> {
     this.tokens.assertEncryptionReady('OneDrive');
     const record = await this.tokens.getTokens(PROVIDER, sessionId);
@@ -173,7 +193,7 @@ export class OneDriveOAuthService {
   async isConnected(sessionId: string): Promise<boolean> {
     if (!this.isConfigured()) return false;
     const record = await this.tokens.getTokens(PROVIDER, sessionId);
-    return Boolean(record?.refreshToken || record?.accessToken);
+    return isCloudTokenConnected(record);
   }
 }
 
@@ -233,17 +253,66 @@ export class OneDriveService {
       });
     }
     const token = await this.requireToken(sessionId);
-    const metaRes = await fetch(
-      `https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(fileId)}?$select=id,name,size`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
+
+    const [metaRes, approotRes] = await Promise.all([
+      fetch(
+        `https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(fileId)}?$select=id,name,size,file,parentReference`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      ),
+      fetch(
+        `https://graph.microsoft.com/v1.0/me/drive/special/approot?$select=id,name`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      ),
+    ]);
     if (!metaRes.ok) {
       throw new ServiceUnavailableException({
         error: 'Failed to fetch OneDrive file metadata',
         code: 'ONEDRIVE_REQUEST_FAILED',
       });
     }
-    const meta = (await metaRes.json()) as { name?: string; size?: number };
+    if (!approotRes.ok) {
+      throw new ServiceUnavailableException({
+        error: 'Failed to resolve OneDrive app folder',
+        code: 'ONEDRIVE_REQUEST_FAILED',
+      });
+    }
+    const meta = (await metaRes.json()) as {
+      id?: string;
+      name?: string;
+      size?: number;
+      file?: { mimeType?: string };
+      parentReference?: { id?: string; path?: string };
+    };
+    const approot = (await approotRes.json()) as { id?: string; name?: string };
+
+    // Defense-in-depth: only import items whose parent is the app folder root
+    // (matches non-recursive listPdfFiles) or whose path is under /Apps/{app}.
+    const underApproot =
+      Boolean(approot.id) &&
+      (meta.parentReference?.id === approot.id ||
+        (approot.name != null &&
+          Boolean(
+            meta.parentReference?.path?.includes(`/Apps/${approot.name}`),
+          )));
+    if (!underApproot) {
+      throw new BadRequestException({
+        error: 'Only files in the OneDrive app folder can be imported',
+        code: ErrorCodes.FILE_INVALID,
+      });
+    }
+
+    if (
+      !isCloudPdfMeta({
+        name: meta.name,
+        mimeType: meta.file?.mimeType,
+      })
+    ) {
+      throw new BadRequestException({
+        error: 'Only PDF files can be imported from OneDrive',
+        code: ErrorCodes.FILE_INVALID,
+      });
+    }
+
     if (meta.size != null && meta.size > MAX_CLOUD_FILE_BYTES) {
       throw new BadRequestException({
         error: 'File exceeds the 50MB cloud import limit',

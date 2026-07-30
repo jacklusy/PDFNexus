@@ -24,7 +24,7 @@ const toolLinks = [
   { href: '/protect-pdf', label: 'Protect PDF' },
   { href: '/unlock-pdf', label: 'Unlock PDF' },
   { href: '/sign-pdf', label: 'Sign PDF' },
-  { href: '/edit-pdf', label: 'Edit PDF' },
+  { href: '/edit-pdf', label: 'Add text & shapes' },
   { href: '/watermark-pdf', label: 'Watermark' },
   { href: '/page-numbers-pdf', label: 'Page numbers' },
   { href: '/pdf-to-jpg', label: 'PDF to JPG' },

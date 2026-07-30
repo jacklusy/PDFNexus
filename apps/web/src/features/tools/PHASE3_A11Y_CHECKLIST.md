@@ -35,11 +35,12 @@ Use keyboard + screen reader (or browser a11y tree) on each new tool page.
 - [ ] Region page/x/y/w/h fields are labeled
 - [ ] Verify phrases control is labeled; results announced politely
 
-## Office → PDF / Cert sign (placeholders)
+## Office → PDF / Cert sign
 
-- [ ] Coming-soon status is exposed (`role="status"` or equivalent)
+- [ ] Office→PDF: Gotenberg consent + file picker labeled; errors use ToolError / `role="alert"`
+- [ ] Cert sign: experimental warning is visible; PKCS#12 password field labeled
+- [ ] Cert sign copy distinguishes cryptographic intent vs visual Sign PDF; notes PEM + detached `.p7s` as **attachments** (not separate downloads)
 - [ ] Disabled primary CTA does not imply a silent failure
-- [ ] Cert sign copy distinguishes cryptographic vs visual Sign PDF
 
 ## SEO / nav
 

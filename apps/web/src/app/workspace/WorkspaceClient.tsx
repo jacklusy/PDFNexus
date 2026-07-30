@@ -1,7 +1,9 @@
 'use client';
 
+import { Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
+import { CloudOAuthBanner } from '@/features/cloud/CloudOAuthBanner';
 
 const WorkspaceApp = dynamic(
   () => import('@/features/workspace/WorkspaceApp').then((m) => m.default),
@@ -18,7 +20,14 @@ const WorkspaceApp = dynamic(
 export default function WorkspaceClient() {
   return (
     <AppErrorBoundary>
-      <WorkspaceApp />
+      <div className="min-h-screen">
+        <div className="mx-auto max-w-6xl px-4 pt-4">
+          <Suspense fallback={null}>
+            <CloudOAuthBanner />
+          </Suspense>
+        </div>
+        <WorkspaceApp />
+      </div>
     </AppErrorBoundary>
   );
 }

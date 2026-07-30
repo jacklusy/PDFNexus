@@ -19,7 +19,7 @@ export default function Page() {
       howItWorks={[
         'Upload the PDF you want to mark with certificate intent.',
         'Select your .p12 / .pfx file and enter its password (never logged).',
-        'Confirm the experimental appearance, then download the PDF with CN stamp, signer.pem, and optional signature-detached.p7s.',
+        'Download one PDF that includes the CN appearance stamp plus attached signer.pem and optional signature-detached.p7s (embedded attachments — not separate download files).',
       ]}
       privacyNote="Runs in your browser. Certificate password and PKCS#12 never leave your device."
       limits={[
@@ -42,7 +42,12 @@ export default function Page() {
         {
           question: 'How is this different from Sign PDF?',
           answer:
-            'Sign PDF adds a typed or drawn visual stamp. Certificate sign uses a real PKCS#12 to show CN, attach PEM/PKCS#7 artifacts, with clear experimental labeling.',
+            'Sign PDF adds a typed or drawn visual stamp. Certificate sign uses a real PKCS#12 to show CN and embed PEM/PKCS#7 as PDF attachments, with clear experimental labeling.',
+        },
+        {
+          question: 'Are PEM and .p7s separate downloads?',
+          answer:
+            'No. They are attached inside the output PDF (EmbeddedFile attachments). Open the PDF’s attachments panel to extract them.',
         },
         {
           question: 'What if my password is wrong?',

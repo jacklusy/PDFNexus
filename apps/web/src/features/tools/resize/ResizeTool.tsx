@@ -5,6 +5,7 @@ import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { ToolWorkbench } from '../ToolWorkbench';
+import { ToolError } from '../ToolError';
 import { useToolHandoff } from '../useToolHandoff';
 import { parsePageRanges, PageRangeError } from '../parsePageRanges';
 import { PagePreviewCanvas } from '../PagePreviewCanvas';
@@ -359,9 +360,7 @@ export function ResizeTool() {
 
       {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
       {error ? (
-        <p className="text-sm text-[var(--color-danger)]" role="alert">
-          {error}
-        </p>
+        <ToolError message={error} fileName={file?.name} onRetry={() => setError(null)} />
       ) : null}
     </ToolWorkbench>
   );

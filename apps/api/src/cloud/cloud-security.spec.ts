@@ -5,7 +5,7 @@ import {
   isEncryptedPayload,
 } from './token-crypto';
 import { oauthCallbackSessionMatches } from './oauth-callback-guard';
-import { isPdfUpload, MAX_CLOUD_FILE_BYTES } from './cloud-constants';
+import { isPdfUpload, isCloudPdfMeta, isCloudTokenConnected, MAX_CLOUD_FILE_BYTES } from './cloud-constants';
 import {
   deserializeCloudTokenRecord,
   serializeCloudTokenRecord,
@@ -43,12 +43,44 @@ describe('cloud PDF + size gates', () => {
     expect(MAX_CLOUD_FILE_BYTES).toBe(50 * 1024 * 1024);
   });
 
-  it('accepts PDF mime/name only', () => {
+  it('accepts PDF mime or .pdf name; rejects bare octet-stream', () => {
     expect(isPdfUpload({ mimetype: 'application/pdf', originalname: 'a.bin' })).toBe(
       true,
     );
     expect(isPdfUpload({ mimetype: 'text/plain', originalname: 'a.pdf' })).toBe(true);
+    expect(
+      isPdfUpload({ mimetype: 'application/octet-stream', originalname: 'a.pdf' }),
+    ).toBe(true);
+    expect(
+      isPdfUpload({ mimetype: 'application/octet-stream', originalname: 'a.bin' }),
+    ).toBe(false);
     expect(isPdfUpload({ mimetype: 'image/png', originalname: 'a.png' })).toBe(false);
+  });
+
+  it('rejects non-PDF import metadata', () => {
+    expect(isCloudPdfMeta({ name: 'doc.pdf' })).toBe(true);
+    expect(isCloudPdfMeta({ mimeType: 'application/pdf' })).toBe(true);
+    expect(isCloudPdfMeta({ name: 'notes.docx', mimeType: 'application/msword' })).toBe(
+      false,
+    );
+  });
+
+  it('isConnected requires refresh or non-expired access', () => {
+    expect(isCloudTokenConnected(null)).toBe(false);
+    expect(isCloudTokenConnected({ refreshToken: 'r' })).toBe(true);
+    expect(
+      isCloudTokenConnected({
+        accessToken: 'a',
+        accessExpiresAt: Date.now() + 60_000,
+      }),
+    ).toBe(true);
+    expect(
+      isCloudTokenConnected({
+        accessToken: 'a',
+        accessExpiresAt: Date.now() - 1,
+      }),
+    ).toBe(false);
+    expect(isCloudTokenConnected({ accessToken: 'a' })).toBe(false);
   });
 });
 

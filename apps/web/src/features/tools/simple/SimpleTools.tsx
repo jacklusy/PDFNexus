@@ -6,6 +6,7 @@ import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
+import { ToolError } from '../ToolError';
 
 /** Dedicated merge UI wrapping pdf-lib (same engine as workspace). */
 export function MergeTool() {
@@ -67,9 +68,11 @@ export function MergeTool() {
     >
       {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
       {error ? (
-        <p className="text-sm text-[var(--color-danger)]" role="alert">
-          {error}
-        </p>
+        <ToolError
+          message={error}
+          fileName={files[0]?.name}
+          onRetry={() => setError(null)}
+        />
       ) : null}
     </ToolWorkbench>
   );
@@ -80,9 +83,9 @@ export function RotateTool() {
   const [angle, setAngle] = useState<90 | 180 | 270>(90);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const file = files[0]?.file;
 
   const run = async () => {
-    const file = files[0]?.file;
     if (!file) return;
     setBusy(true);
     setError(null);
@@ -142,9 +145,7 @@ export function RotateTool() {
         ))}
       </div>
       {error ? (
-        <p className="text-sm text-[var(--color-danger)]" role="alert">
-          {error}
-        </p>
+        <ToolError message={error} fileName={file?.name} onRetry={() => setError(null)} />
       ) : null}
     </ToolWorkbench>
   );
@@ -204,9 +205,11 @@ export function JpgToPdfTool() {
       }
     >
       {error ? (
-        <p className="text-sm text-[var(--color-danger)]" role="alert">
-          {error}
-        </p>
+        <ToolError
+          message={error}
+          fileName={files[0]?.name}
+          onRetry={() => setError(null)}
+        />
       ) : null}
     </ToolWorkbench>
   );

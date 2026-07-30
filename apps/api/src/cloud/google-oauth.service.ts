@@ -52,10 +52,10 @@ export class GoogleOAuthService {
   }
 
   assertConfigured(): void {
-    if (!this.clientId) {
+    if (!this.clientId || !this.clientSecret) {
       throw new ServiceUnavailableException({
         error:
-          'Google Drive is not configured. Set GOOGLE_CLIENT_ID (and related env vars) to enable it.',
+          'Google Drive is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable it.',
         code: 'DRIVE_UNAVAILABLE',
       });
     }
@@ -75,7 +75,7 @@ export class GoogleOAuthService {
   }
 
   isConfigured(): boolean {
-    return Boolean(this.clientId);
+    return Boolean(this.clientId && this.clientSecret);
   }
 
   tokenRedisKey(sessionId: string): string {
@@ -104,7 +104,6 @@ export class GoogleOAuthService {
       access_type: 'offline',
       prompt: 'consent',
       state,
-      include_granted_scopes: 'true',
     });
 
     return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
@@ -218,7 +217,24 @@ export class GoogleOAuthService {
     await this.redis.client.del(this.tokenRedisKey(sessionId));
   }
 
+  /** Best-effort Google token revoke; caller still clears Redis. */
+  async revokeAccess(sessionId: string): Promise<void> {
+    try {
+      const record = await this.getTokenRecord(sessionId);
+      const token = record?.refreshToken || record?.accessToken;
+      if (!token) return;
+      await fetch('https://oauth2.googleapis.com/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ token }),
+      });
+    } catch {
+      /* fail soft */
+    }
+  }
+
   async getAccessToken(sessionId: string): Promise<string | null> {
+    this.assertEncryptionReady();
     const record = await this.getTokenRecord(sessionId);
     if (!record) return null;
 

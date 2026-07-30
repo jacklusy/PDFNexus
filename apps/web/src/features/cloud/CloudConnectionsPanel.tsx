@@ -28,7 +28,7 @@ export function CloudConnectionsPanel({
       <GenericCloudPanel
         provider="dropbox"
         title="Dropbox"
-        description="Optional Dropbox import/export (files.content.read/write). Never required."
+        description="Optional Dropbox app-folder import/export (files.content.read/write). Never required."
         onImport={onImport}
         exportFile={exportFile}
       />
