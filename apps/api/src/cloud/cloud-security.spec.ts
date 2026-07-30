@@ -90,13 +90,14 @@ describe('cloud PDF + size gates', () => {
     expect(isCloudTokenConnected({ accessToken: 'a' })).toBe(false);
   });
 
-  it('requires %PDF- magic bytes', () => {
+  it('requires %PDF- magic bytes within first 1024', () => {
     expect(isPdfMagic(Buffer.from('%PDF-1.7\n'))).toBe(true);
+    expect(isPdfMagic(Buffer.from('xxxx%PDF-1.4'))).toBe(true);
     expect(isPdfMagic(Buffer.from('not a pdf'))).toBe(false);
     expect(isPdfMagic(Buffer.from('%PD'))).toBe(false);
   });
 
-  it('approot path uses segment-safe marker', () => {
+  it('approot path uses rooted /drive/root:/Apps/{name}', () => {
     expect(
       isUnderOneDriveApproot({
         approotId: 'root',
@@ -115,11 +116,18 @@ describe('cloud PDF + size gates', () => {
         parentPath: '/drive/root:/Apps/MyAppExtra/x',
       }),
     ).toBe(false);
+    expect(
+      isUnderOneDriveApproot({
+        approotName: 'MyApp',
+        parentPath: '/drive/root:/Other/Apps/MyApp/x',
+      }),
+    ).toBe(false);
   });
 
   it('dropbox upload path is basename-only', () => {
     expect(dropboxAppFolderUploadPath('../evil.pdf')).toBe('/evil.pdf');
     expect(dropboxAppFolderUploadPath('a/b/c.pdf')).toBe('/c.pdf');
+    expect(dropboxAppFolderUploadPath('notes')).toBe('/notes.pdf');
   });
 
   it('readCloudBodyCapped rejects oversized Content-Length', async () => {
@@ -137,6 +145,29 @@ describe('cloud PDF + size gates', () => {
     const res = new Response(body, { status: 200 });
     const buf = await readCloudBodyCapped(res, MAX_CLOUD_FILE_BYTES);
     expect(buf.equals(body)).toBe(true);
+  });
+
+  it('readCloudBodyCapped rejects empty body', async () => {
+    const res = new Response(new Uint8Array(0), { status: 200 });
+    await expect(readCloudBodyCapped(res, MAX_CLOUD_FILE_BYTES)).rejects.toMatchObject({
+      code: 'EMPTY',
+    });
+  });
+
+  it('readCloudBodyCapped rejects streaming body over max without Content-Length', async () => {
+    const max = 64;
+    const chunk = new Uint8Array(40);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(chunk);
+        controller.enqueue(chunk);
+        controller.close();
+      },
+    });
+    const res = new Response(stream, { status: 200 });
+    await expect(readCloudBodyCapped(res, max)).rejects.toMatchObject({
+      code: 'TOO_LARGE',
+    });
   });
 });
 

@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import { extractPdfPages, type ExtractRequest } from './extractPdf';
+import { extractPdfPages, toTransferablePdfBytes, type ExtractRequest } from './extractPdf';
 
 export type ExtractWorkerRequest = {
   id: string;
@@ -13,10 +13,7 @@ self.onmessage = async (event: MessageEvent<ExtractWorkerRequest>) => {
     const result = await extractPdfPages(request, (current, total) => {
       self.postMessage({ id, type: 'progress', current, total });
     });
-    const buffer = result.bytes.buffer.slice(
-      result.bytes.byteOffset,
-      result.bytes.byteOffset + result.bytes.byteLength
-    );
+    const buffer = toTransferablePdfBytes(result.bytes);
     self.postMessage(
       { id, ok: true, result: { bytes: buffer, pageCount: result.pageCount } },
       [buffer]

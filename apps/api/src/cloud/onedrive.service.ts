@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { ErrorCodes } from '@pdfnexus/shared';
-import { MAX_CLOUD_FILE_BYTES, isCloudPdfMeta, isCloudTokenConnected, isPdfMagic, isPdfUpload, isUnderOneDriveApproot, readCloudBodyCapped } from './cloud-constants';
+import { MAX_CLOUD_FILE_BYTES, isCloudPdfMeta, isCloudTokenConnected, isPdfMagic, isPdfUpload, isUnderOneDriveApproot, cloudAppFolderBasename, readCloudBodyCapped } from './cloud-constants';
 import { CloudTokenStore } from './cloud-token-store';
 
 const PROVIDER = 'onedrive';
@@ -326,9 +326,15 @@ export class OneDriveService {
           code: ErrorCodes.FILE_TOO_LARGE,
         });
       }
-      throw new BadRequestException({
-        error: 'Invalid or empty OneDrive file',
-        code: ErrorCodes.FILE_INVALID,
+      if (code === 'EMPTY') {
+        throw new BadRequestException({
+          error: 'Empty OneDrive file',
+          code: ErrorCodes.FILE_INVALID,
+        });
+      }
+      throw new ServiceUnavailableException({
+        error: 'Failed to read OneDrive file body',
+        code: 'ONEDRIVE_REQUEST_FAILED',
       });
     }
     if (!isPdfMagic(buffer)) {
@@ -364,7 +370,7 @@ export class OneDriveService {
       });
     }
     const token = await this.requireToken(sessionId);
-    const name = encodeURIComponent(file.originalname || 'document.pdf');
+    const name = encodeURIComponent(cloudAppFolderBasename(file.originalname));
     const res = await fetch(
       `https://graph.microsoft.com/v1.0/me/drive/special/approot:/${name}:/content`,
       {

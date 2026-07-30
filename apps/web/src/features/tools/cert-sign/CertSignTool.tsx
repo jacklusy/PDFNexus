@@ -37,11 +37,17 @@ export function CertSignTool() {
 
   const run = async () => {
     if (!file || !p12File || !confirmAppearance) return;
+    if (!password) {
+      setError('Enter the certificate password to continue.');
+      setErrorFileName(p12File.name);
+      return;
+    }
     setBusy(true);
     setError(null);
     setErrorFileName(undefined);
     setProgress('Reading certificate…');
     let pwd = password;
+    let succeeded = false;
     try {
       const [pdfBytes, p12Bytes] = await Promise.all([
         file.arrayBuffer(),
@@ -61,6 +67,7 @@ export function CertSignTool() {
       setProgress(
         `Downloaded (CN: ${result.commonName}). ${CERT_SIGN_EXPERIMENTAL_NOTICE}`
       );
+      succeeded = true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -70,9 +77,11 @@ export function CertSignTool() {
       setErrorFileName(p12ish ? p12File.name : file.name);
       setProgress(null);
     } finally {
-      clearPassword(pwd);
-      pwd = '';
-      setPassword('');
+      if (succeeded) {
+        clearPassword(pwd);
+        pwd = '';
+        setPassword('');
+      }
       setBusy(false);
     }
   };
@@ -167,7 +176,7 @@ export function CertSignTool() {
             onChange={(e) => setPassword(e.target.value)}
           />
           <span className="mt-1 block text-xs text-[var(--color-muted)]">
-            Cleared from memory after use; never logged.
+            Cleared from memory after a successful download; never logged.
           </span>
         </label>
       </div>
@@ -197,13 +206,21 @@ export function CertSignTool() {
       {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
       {error ? (
         <ToolError
-          message={error}
+          message={
+            password.length > 0
+              ? error
+              : `${error} Re-enter the certificate password, then use Retry or the primary button.`
+          }
           fileName={errorFileName}
-          onRetry={() => {
-            setError(null);
-            setErrorFileName(undefined);
-            void run();
-          }}
+          onRetry={
+            password.length > 0
+              ? () => {
+                  setError(null);
+                  setErrorFileName(undefined);
+                  void run();
+                }
+              : undefined
+          }
         />
       ) : null}
     </ToolWorkbench>

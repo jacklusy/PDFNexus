@@ -346,9 +346,15 @@ export class DropboxService {
           code: ErrorCodes.FILE_TOO_LARGE,
         });
       }
-      throw new BadRequestException({
-        error: 'Invalid or empty Dropbox file',
-        code: ErrorCodes.FILE_INVALID,
+      if (code === 'EMPTY') {
+        throw new BadRequestException({
+          error: 'Empty Dropbox file',
+          code: ErrorCodes.FILE_INVALID,
+        });
+      }
+      throw new ServiceUnavailableException({
+        error: 'Failed to read Dropbox file body',
+        code: 'DROPBOX_REQUEST_FAILED',
       });
     }
     if (!isPdfMagic(buffer)) {

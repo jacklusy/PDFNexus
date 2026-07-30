@@ -39,6 +39,7 @@ export function ProtectTool() {
     setProgress('Loading encryption engine…');
     let user = userPassword;
     let owner = ownerPassword || userPassword;
+    let succeeded = false;
     try {
       const toolkit = await getPdfToolkit();
       setProgress('Encrypting…');
@@ -59,17 +60,20 @@ export function ProtectTool() {
         name
       );
       setProgress('Downloaded protected PDF');
+      succeeded = true;
     } catch (e) {
       setError(sanitizeToolkitError(e));
       setProgress(null);
     } finally {
-      clearPassword(user);
-      clearPassword(owner);
-      user = '';
-      owner = '';
-      setUserPassword('');
-      setConfirm('');
-      setOwnerPassword('');
+      if (succeeded) {
+        clearPassword(user);
+        clearPassword(owner);
+        user = '';
+        owner = '';
+        setUserPassword('');
+        setConfirm('');
+        setOwnerPassword('');
+      }
       setBusy(false);
     }
   };
@@ -180,9 +184,20 @@ export function ProtectTool() {
       {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
       {error ? (
         <ToolError
-          message={error}
+          message={
+            userPassword
+              ? error
+              : `${error} Re-enter passwords, then use Retry or Protect again.`
+          }
           fileName={file?.name}
-          onRetry={() => { setError(null); void run(); }}
+          onRetry={
+            userPassword && userPassword === confirm
+              ? () => {
+                  setError(null);
+                  void run();
+                }
+              : undefined
+          }
         />
       ) : null}
     </ToolWorkbench>

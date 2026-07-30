@@ -48,3 +48,25 @@ describe('extractPdfPages', () => {
     );
   });
 });
+
+describe('extract worker contract helpers', () => {
+  it('toTransferablePdfBytes returns a matching ArrayBuffer', async () => {
+    const { toTransferablePdfBytes } = await import('./extractPdf');
+    const src = new Uint8Array([1, 2, 3, 4, 5]).subarray(1, 4);
+    const ab = toTransferablePdfBytes(src);
+    expect(ab.byteLength).toBe(3);
+    expect([...new Uint8Array(ab)]).toEqual([2, 3, 4]);
+  });
+
+  it('builds ok and error worker messages', async () => {
+    const {
+      extractWorkerOkMessage,
+      extractWorkerErrMessage,
+    } = await import('./extractPdf');
+    const ok = extractWorkerOkMessage('extract', new Uint8Array([37, 80]), 2);
+    expect(ok).toMatchObject({ id: 'extract', ok: true, result: { pageCount: 2 } });
+    expect(ok.result.bytes.byteLength).toBe(2);
+    const err = extractWorkerErrMessage('extract', new Error('boom'));
+    expect(err).toEqual({ id: 'extract', ok: false, error: 'boom' });
+  });
+});

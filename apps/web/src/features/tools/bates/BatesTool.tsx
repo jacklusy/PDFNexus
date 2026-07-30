@@ -56,6 +56,7 @@ export function BatesTool() {
   const [fileCurrent, setFileCurrent] = useState(0);
   const [fileTotal, setFileTotal] = useState(0);
   const cancelledRef = useRef(false);
+  const [loadKey, setLoadKey] = useState(0);
   const { elapsedLabel } = useTimedProgress(busy);
 
   const firstFile = files[0]?.file;
@@ -80,15 +81,19 @@ export function BatesTool() {
           setPageCount(n);
           setRangeText(`1-${n}`);
           setError(null);
+          setErrorFileName(undefined);
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not read PDF');
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Could not read PDF');
+          setErrorFileName(firstFile.name);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [firstFile]);
+  }, [firstFile, loadKey]);
 
   const run = async () => {
     if (!files.length) return;
@@ -192,6 +197,7 @@ export function BatesTool() {
       onFilesChange={(next) => {
         setFiles(next);
         setError(null);
+        setErrorFileName(undefined);
         setProgress(null);
       }}
       busy={busy}
@@ -336,7 +342,8 @@ export function BatesTool() {
           onRetry={() => {
             setError(null);
             setErrorFileName(undefined);
-            void run();
+            if (pageCount > 0) void run();
+            else setLoadKey((k) => k + 1);
           }}
         />
       ) : null}

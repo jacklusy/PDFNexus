@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { CloudUpload, Link2 } from 'lucide-react';
 import { Button } from '@/shared/ui/Button';
 import { ApiError, apiFetch } from '@/lib/api';
+import { ToolError } from '@/features/tools/ToolError';
 import { canUseDriveExport, CONSENT_LABEL } from './driveConsent';
 
 export interface DriveExportButtonProps {
@@ -145,9 +146,11 @@ export function DriveExportButton({
         <p className="text-sm text-[var(--color-muted)]">{message}</p>
       ) : null}
       {error ? (
-        <p className="text-sm text-[var(--color-danger)]" role="alert">
-          {error}
-        </p>
+        <ToolError
+          message={error}
+          originalSafe
+          cloudNote="Export to Drive is optional. Your local download is unchanged."
+        />
       ) : null}
     </div>
   );

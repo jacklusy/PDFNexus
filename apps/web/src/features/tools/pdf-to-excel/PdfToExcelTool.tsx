@@ -20,6 +20,8 @@ export function PdfToExcelTool() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const [lastAction, setLastAction] = useState<'detect' | 'ocr' | 'export'>('detect');
+  const [detectKey, setDetectKey] = useState(0);
 
   const file = files[0]?.file;
 
@@ -33,6 +35,7 @@ export function PdfToExcelTool() {
       }
       setBusy(true);
       setError(null);
+      setLastAction('detect');
       setProgress('Detecting tables…');
       try {
         await loadReadablePdf(await file.arrayBuffer());
@@ -58,7 +61,7 @@ export function PdfToExcelTool() {
     return () => {
       cancelled = true;
     };
-  }, [file]);
+  }, [file, detectKey]);
 
   const toggle = (index: number) => {
     setSelected((prev) => {
@@ -73,6 +76,7 @@ export function PdfToExcelTool() {
     if (!canRunOcrTableDetect(ocrConsent, Boolean(file)) || !file) return;
     setBusy(true);
     setError(null);
+    setLastAction('ocr');
     try {
       const bytes = await file.arrayBuffer();
       const found = await detectTablesViaOcr({
@@ -98,6 +102,7 @@ export function PdfToExcelTool() {
     if (!file || selected.size === 0) return;
     setBusy(true);
     setError(null);
+    setLastAction('export');
     try {
       const indices = [...selected].sort((a, b) => a - b);
       const buf = pdfToExcel({ tables, selectedIndices: indices });
@@ -114,6 +119,13 @@ export function PdfToExcelTool() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const retryLast = () => {
+    setError(null);
+    if (lastAction === 'ocr') void runOcrDetect();
+    else if (lastAction === 'export') exportXlsx();
+    else setDetectKey((k) => k + 1);
   };
 
   return (
@@ -239,7 +251,7 @@ export function PdfToExcelTool() {
               ? 'If OCR ran, page images may have been sent after consent. Your original PDF is unchanged.'
               : undefined
           }
-          onRetry={() => { setError(null); void runOcrDetect(); }}
+          onRetry={retryLast}
         />
       ) : null}
     </ToolWorkbench>

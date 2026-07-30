@@ -6,7 +6,7 @@ export const MAX_DRIVE_FILE_BYTES = MAX_CLOUD_FILE_BYTES;
 
 /**
  * PDF-only gate for cloud export (name/mime).
- * Accepts application/pdf, or a .pdf filename (even if mime is empty/octet-stream).
+ * Accepts application/pdf or application/x-pdf, or a .pdf filename.
  * Never treats bare application/octet-stream without .pdf as PDF.
  * Callers must also verify magic bytes via {@link isPdfMagic}.
  */
@@ -17,7 +17,7 @@ export function isPdfUpload(file: {
   const mime = (file.mimetype || '').toLowerCase();
   const nameLower = (file.originalname || '').toLowerCase();
   if (nameLower.endsWith('.pdf')) return true;
-  return mime === 'application/pdf';
+  return mime === 'application/pdf' || mime === 'application/x-pdf';
 }
 
 /** True when cloud file metadata looks like a PDF. */
@@ -34,16 +34,24 @@ export function isCloudPdfMeta(meta: {
   );
 }
 
-/** PDF magic: first bytes are `%PDF-`. */
+/**
+ * PDF magic: `%PDF-` within the first 1024 bytes (ISO 32000).
+ */
 export function isPdfMagic(buf: Buffer | Uint8Array): boolean {
   if (!buf || buf.length < 5) return false;
-  return (
-    buf[0] === 0x25 && // %
-    buf[1] === 0x50 && // P
-    buf[2] === 0x44 && // D
-    buf[3] === 0x46 && // F
-    buf[4] === 0x2d // -
-  );
+  const limit = Math.min(buf.length - 4, 1024);
+  for (let i = 0; i < limit; i++) {
+    if (
+      buf[i] === 0x25 && // %
+      buf[i + 1] === 0x50 && // P
+      buf[i + 2] === 0x44 && // D
+      buf[i + 3] === 0x46 && // F
+      buf[i + 4] === 0x2d // -
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -120,8 +128,8 @@ export async function readCloudBodyCapped(
 }
 
 /**
- * OneDrive approot containment: parent id match, or path under `/Apps/{name}/`
- * (trailing slash avoids `/Apps/MyAppExtra` prefix collisions).
+ * OneDrive approot containment: parent id match, or Graph path under
+ * `/drive/root:/Apps/{name}` (rejects `/Other/Apps/{name}` false positives).
  */
 export function isUnderOneDriveApproot(opts: {
   approotId?: string;
@@ -131,13 +139,13 @@ export function isUnderOneDriveApproot(opts: {
 }): boolean {
   if (opts.approotId && opts.parentId === opts.approotId) return true;
   if (!opts.approotName || !opts.parentPath) return false;
-  const marker = `/Apps/${opts.approotName}/`;
+  const rooted = `/drive/root:/Apps/${opts.approotName}`;
   const path = opts.parentPath;
-  return path.includes(marker) || path.endsWith(`/Apps/${opts.approotName}`);
+  return path === rooted || path.startsWith(`${rooted}/`);
 }
 
-/** Safe Dropbox app-folder upload path from a client filename. */
-export function dropboxAppFolderUploadPath(originalname?: string): string {
+/** Safe basename for app-folder uploads (Dropbox path or OneDrive item name). */
+export function cloudAppFolderBasename(originalname?: string): string {
   const base = (originalname || 'document.pdf')
     .replace(/\\/g, '/')
     .split('/')
@@ -145,10 +153,14 @@ export function dropboxAppFolderUploadPath(originalname?: string): string {
     .replace(/^\.+/, '')
     .replace(/[^\w.\-()+ ]+/g, '_')
     .slice(0, 160);
-  const name = base.toLowerCase().endsWith('.pdf')
+  return base.toLowerCase().endsWith('.pdf')
     ? base || 'document.pdf'
     : `${base || 'document'}.pdf`;
-  return `/${name}`;
+}
+
+/** Safe Dropbox app-folder upload path from a client filename. */
+export function dropboxAppFolderUploadPath(originalname?: string): string {
+  return `/${cloudAppFolderBasename(originalname)}`;
 }
 
 export function isCloudTokenConnected(record: {

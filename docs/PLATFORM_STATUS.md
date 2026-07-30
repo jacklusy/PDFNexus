@@ -1,4 +1,4 @@
-# PDFNexus — Platform status (Phases 5–11)
+# PDFNexus — Platform status (Phases 5–13)
 
 **No healthcare or legal compliance claims.** Browser/a11y rows below are a **manual QA checklist**, not a claim that every cell was validated in CI.
 
@@ -22,62 +22,32 @@
 
 Local downloads remain ungated. Email verification is optional delivery only.
 
-## Phase 5–6 (shipped)
+## Phase 5–11 (summary)
 
-- Google Picker import, 50MB caps, sanitized Drive errors, single Redis token key
-- Dropbox + OneDrive OAuth, EPUB `/pdf-to-epub`, experimental cert-sign with detached `.p7s` **attachments**
-- See also [PHASE5_STATUS.md](./PHASE5_STATUS.md)
+See earlier sections in git history / prior docs. Highlights: cloud OAuth harden, ToolError rollout, extract worker, Add text & shapes honesty, capped cloud reads + `%PDF-` magic.
 
-## Phase 7 (review fixes)
+## Phase 12 (review harden)
 
-- OAuth login CSRF: callback requires cookie session === OAuth `state` session (timing-safe compare)
-- Shared encryption key resolver (`CLOUD_TOKEN_ENCRYPTION_KEY` preferred, else `GOOGLE_*`)
-- Fail-closed: reject plaintext Redis tokens when encryption key is set
-- Dropbox: metadata size gate before download; PDF-only export
-- OneDrive: `Files.ReadWrite.AppFolder` + approot list/upload; PDF-only export
-- Drive: session cookie only (no verified-email shortcut)
-- About metadata/principles honesty; cert `.p7s` covers **original** bytes only
-- Security unit tests: token-crypto, CSRF guard, PDF/size gates, env fail-closed
+- CertSign / Protect: clear passwords only after **successful** download; Retry only when secrets still present
+- PdfToExcel: Retry follows `lastAction` (`detect` / `ocr` / `export`)
+- Bates: load failures set `errorFileName`; Retry reloads when pageCount is 0
+- OneDrive export: shared basename sanitization (`cloudAppFolderBasename`)
+- `isPdfMagic`: `%PDF-` within first **1024** bytes; approot path rooted at `/drive/root:/Apps/{name}`
+- Cloud reader tests: stream oversize, empty body, Other/Apps false positive
 
-## Phase 8 (closeout)
+## Phase 13 (quality closeout)
 
-- `/cloud` in sitemap; CertSign uses `ToolError`
-- Real EPUB smoke (`pdfToEpub` with mocked HTML); cert parse/honesty Vitest
-- Manual a11y checklist remains unchecked until humans run it
-
-## Phase 9 (residual cloud harden)
-
-- Dropbox **App Folder**: `list_folder` on `""` (no full-account `search_v2`); scopes `files.content.read/write`
-- Hardened `isPdfUpload`: `application/pdf` **or** `.pdf` name — never bare `application/octet-stream`
-- Import APIs reject non-PDF after metadata (Drive / Dropbox / OneDrive)
-- OneDrive import: approot parent-path defense-in-depth
-- Disconnect: best-effort provider revoke, then clear Redis
-- Drive `getAccessToken` asserts encryption ready; Google drops `include_granted_scopes`
-- Stricter `isConnected` (refresh token **or** non-expired access)
-- OAuth error/connected banners on `/cloud` and `/workspace` (`?drive|dropbox|onedrive=…`)
-
-## Phase 10 (ship polish)
-
-- `ToolError` rolled out across remaining priority tools; ExtractTool wires `extract.worker.ts`
-- Edit PDF SEO/nav softened to **Add text & shapes** (overlay-only honesty)
-- Architecture + PHASE3 a11y checklist updated (Office→PDF / cert-sign no longer “coming soon”)
-- Cert-sign how-it-works: PEM / `.p7s` as **attachments**, not separate downloads
-
-## Phase 11 (review harden)
-
-- Cloud import: capped body reader (no unbounded `arrayBuffer`); `%PDF-` magic on import/export
-- Expired access without refresh → `null` (Dropbox/OneDrive aligned with Google)
-- OneDrive disconnect: clear-local only (no fake logout revoke); segment-safe approot path
-- Dropbox export: basename-only upload path
-- `ToolError` Retry re-runs the action; Bates/Merge/JPG track failing file; cert-sign uses p12 name when appropriate
-- `extractPdf` unit tests; related-link “Edit PDF” → “Add text & shapes”
-- Cancel during pre-worker `arrayBuffer()` remains a known limit (same as Split)
+- Office oversize + Drive/Dropbox/OneDrive panels use `ToolError` (+ cloud notes)
+- `isPdfUpload` accepts `application/x-pdf`
+- Extract worker contract helpers + unit tests (`toTransferablePdfBytes`, ok/error messages)
+- PDF→images / JPEG raster remain **main-thread** (known limit); pre-worker `arrayBuffer` cancel still known limit
+- A11y / browser matrices stay **manual** — not CI-validated
 
 ## §19 Performance notes (templates / known limits)
 
 Numbers below are **design limits and patterns**, not measured CI benchmarks collected in-repo.
 
-- Prefer local tools; workers for structural compress / split / extract where wired
+- Prefer local tools; workers for structural compress / split / extract / merge where wired
 - Raster JPEG compress and PDF→images use main-thread canvas (cleared after encode)
 - Cloud imports/exports capped at **50MB** (enforced while reading the response body)
 - Batch cancel stops before the next pending job (not mid-runner AbortSignal)
@@ -99,6 +69,8 @@ Numbers below are **design limits and patterns**, not measured CI benchmarks col
 - Claiming healthcare/legal/regulatory compliance
 - Drive still needs Google Picker under `drive.file` for arbitrary library files
 - Expanding OneDrive/Dropbox back to full library scopes — intentionally out of scope
+- PDF→images worker not wired (main-thread)
+- Measured perf / full a11y pass — manual only
 
 ## Env vars (cloud)
 

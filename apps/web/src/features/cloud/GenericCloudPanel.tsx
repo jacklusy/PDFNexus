@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Cloud, Link2Off, Loader2, Upload } from 'lucide-react';
 import { Button } from '@/shared/ui/Button';
 import { ApiError, apiFetch, apiPostJson } from '@/lib/api';
+import { ToolError } from '@/features/tools/ToolError';
 import {
   canUseCloudExport,
   consentLabelFor,
@@ -240,9 +241,11 @@ export function GenericCloudPanel({
         </p>
       ) : null}
       {error ? (
-        <p className="text-sm text-[var(--color-danger)]" role="alert">
-          {error}
-        </p>
+        <ToolError
+          message={error}
+          originalSafe
+          cloudNote="Cloud import/export is optional. Your local originals stay on this device."
+        />
       ) : null}
     </div>
   );

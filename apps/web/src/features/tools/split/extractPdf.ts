@@ -51,3 +51,46 @@ export async function extractPdfPages(
   const bytes = await out.save();
   return { bytes, pageCount: pages.length };
 }
+
+/** Slice a Uint8Array into a transferable ArrayBuffer for worker postMessage. */
+export function toTransferablePdfBytes(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  ) as ArrayBuffer;
+}
+
+export type ExtractWorkerOkMessage = {
+  id: string;
+  ok: true;
+  result: { bytes: ArrayBuffer; pageCount: number };
+};
+
+export type ExtractWorkerErrMessage = {
+  id: string;
+  ok: false;
+  error: string;
+};
+
+export function extractWorkerOkMessage(
+  id: string,
+  bytes: Uint8Array,
+  pageCount: number,
+): ExtractWorkerOkMessage {
+  return {
+    id,
+    ok: true,
+    result: { bytes: toTransferablePdfBytes(bytes), pageCount },
+  };
+}
+
+export function extractWorkerErrMessage(
+  id: string,
+  err: unknown,
+): ExtractWorkerErrMessage {
+  return {
+    id,
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+  };
+}

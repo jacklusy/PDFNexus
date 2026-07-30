@@ -154,9 +154,15 @@ export class DriveService {
           code: ErrorCodes.FILE_TOO_LARGE,
         });
       }
-      throw new BadRequestException({
-        error: 'Invalid or empty Drive file',
-        code: ErrorCodes.FILE_INVALID,
+      if (code === 'EMPTY') {
+        throw new BadRequestException({
+          error: 'Empty Drive file',
+          code: ErrorCodes.FILE_INVALID,
+        });
+      }
+      throw new ServiceUnavailableException({
+        error: 'Failed to read Drive file body',
+        code: 'DRIVE_REQUEST_FAILED',
       });
     }
     if (!isPdfMagic(buffer)) {

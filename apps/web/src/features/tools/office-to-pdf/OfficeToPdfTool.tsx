@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { AlertTriangle, Server } from 'lucide-react';
+import { Server } from 'lucide-react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { DriveExportButton } from '@/features/cloud/DriveExportButton';
@@ -147,10 +147,11 @@ export function OfficeToPdfTool() {
       </label>
 
       {file && file.size > OFFICE_MAX_BYTES ? (
-        <p className="flex items-start gap-2 text-sm text-[var(--color-danger)]" role="alert">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          File exceeds the 25MB limit.
-        </p>
+        <ToolError
+          message="File exceeds the 25MB limit."
+          fileName={file.name}
+          originalSafe
+        />
       ) : null}
 
       {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
