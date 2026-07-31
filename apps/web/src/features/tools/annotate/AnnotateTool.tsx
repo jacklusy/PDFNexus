@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { ToolError } from '../ToolError';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { flattenOverlays } from '../overlays/flattenOverlays';
 import {
@@ -14,8 +16,10 @@ import {
   type PageCommentOverlay,
   type StickyNoteOverlay,
 } from '../overlays/types';
+import { loadPageTextSpans, quadsIntersectingRect, unionQuadBounds } from './textLayerQuads';
 
 type AnnotateMode = 'highlight' | 'stickyNote' | 'pageComment';
+type HighlightMode = 'area' | 'text';
 
 const HIGHLIGHT_COLORS = ['#facc15', '#86efac', '#93c5fd', '#f9a8d4'] as const;
 
@@ -26,12 +30,19 @@ export function AnnotateTool() {
   const [overlays, setOverlays] = useState<OverlayItem[]>([]);
   const [activePage, setActivePage] = useState(1);
   const [tool, setTool] = useState<AnnotateMode>('highlight');
+  const [highlightMode, setHighlightMode] = useState<HighlightMode>('area');
   const [highlightColor, setHighlightColor] = useState<string>(HIGHLIGHT_COLORS[0]);
   const [noteText, setNoteText] = useState('');
   const [noteAuthor, setNoteAuthor] = useState('');
+  const [selX, setSelX] = useState(72);
+  const [selY, setSelY] = useState(400);
+  const [selW, setSelW] = useState(400);
+  const [selH, setSelH] = useState(100);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const cancelledRef = useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
 
   const file = files[0]?.file;
 
@@ -99,6 +110,50 @@ export function AnnotateTool() {
     setOverlays((prev) => [...prev, item]);
   };
 
+  const addTextHighlight = async () => {
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const bytes = await file.arrayBuffer();
+      const spans = await loadPageTextSpans(bytes, activePage);
+      const quads = quadsIntersectingRect(spans, {
+        x: selX,
+        y: selY,
+        width: selW,
+        height: selH,
+      });
+      if (quads.length === 0) {
+        setError('No text found in the selection region.');
+        return;
+      }
+      const bbox = unionQuadBounds(quads);
+      if (!bbox) {
+        setError('Could not compute bounding box for text selection.');
+        return;
+      }
+      const item: HighlightOverlay = {
+        id: createId(),
+        kind: 'highlight',
+        page: activePage,
+        x: bbox.x,
+        y: bbox.y,
+        width: bbox.width,
+        height: bbox.height,
+        rotation: 0,
+        opacity: 1,
+        color: highlightColor,
+        quads,
+      };
+      setOverlays((prev) => [...prev, item]);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not extract text layer');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const addSticky = () => {
     const text = noteText.trim() || 'Sticky note';
     const item: StickyNoteOverlay = {
@@ -155,20 +210,40 @@ export function AnnotateTool() {
 
   const exportFlattened = async () => {
     if (!file) return;
+    cancelledRef.current = false;
     setBusy(true);
     setError(null);
     setProgress('Flattening annotations into content…');
     try {
       const bytes = await file.arrayBuffer();
-      const out = await flattenOverlays(bytes, overlays, (c, t) =>
-        setProgress(`Flattening page ${Math.min(c + 1, t)} / ${t}`)
-      );
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
+      const out = await flattenOverlays(bytes, overlays, (c, t) => {
+        if (cancelledRef.current) throw new Error('Cancelled');
+        setProgress(`Flattening page ${Math.min(c + 1, t)} / ${t}`);
+      });
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
       const name = file.name.replace(/\.pdf$/i, '') + '-annotated.pdf';
-      downloadBlobLocally(new Blob([out], { type: 'application/pdf' }), name);
+      const pdfBytes = out.buffer.slice(
+        out.byteOffset,
+        out.byteOffset + out.byteLength
+      ) as ArrayBuffer;
+      downloadBlobLocally(new Blob([pdfBytes], { type: 'application/pdf' }), name);
       setProgress('Downloaded (flattened into content)');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setProgress(null);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === 'Cancelled' || cancelledRef.current) {
+        setProgress(null);
+        setError(null);
+      } else {
+        setError(msg);
+        setProgress(null);
+      }
     } finally {
       setBusy(false);
     }
@@ -248,27 +323,104 @@ export function AnnotateTool() {
         </div>
 
         {tool === 'highlight' ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex gap-1.5" role="group" aria-label="Highlight color">
-              {HIGHLIGHT_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  title={c}
-                  aria-label={`Color ${c}`}
-                  onClick={() => setHighlightColor(c)}
-                  className="h-7 w-7 rounded-md border-2"
-                  style={{
-                    background: c,
-                    borderColor: highlightColor === c ? 'var(--color-ink)' : 'transparent',
-                  }}
-                />
-              ))}
+          <>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex gap-1.5" role="group" aria-label="Highlight mode">
+                {(
+                  [
+                    ['area', 'Area highlight'],
+                    ['text', 'Text highlight'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setHighlightMode(id)}
+                    disabled={busy}
+                    className={
+                      highlightMode === id
+                        ? 'rounded-lg bg-[var(--color-accent)] px-3 py-1.5 text-xs font-semibold text-white'
+                        : 'rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink)]'
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <Button variant="secondary" size="sm" disabled={!file} onClick={addHighlight}>
-              Add highlight on page {activePage}
-            </Button>
-          </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex gap-1.5" role="group" aria-label="Highlight color">
+                {HIGHLIGHT_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    title={c}
+                    aria-label={`Color ${c}`}
+                    onClick={() => setHighlightColor(c)}
+                    disabled={busy}
+                    className="h-7 w-7 rounded-md border-2"
+                    style={{
+                      background: c,
+                      borderColor: highlightColor === c ? 'var(--color-ink)' : 'transparent',
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+            {highlightMode === 'area' ? (
+              <Button variant="secondary" size="sm" disabled={!file || busy} onClick={addHighlight}>
+                Add area highlight on page {activePage}
+              </Button>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <label className="block text-sm text-[var(--color-muted)]">
+                    X
+                    <input
+                      type="number"
+                      value={selX}
+                      onChange={(e) => setSelX(Number(e.target.value))}
+                      disabled={busy}
+                      className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="block text-sm text-[var(--color-muted)]">
+                    Y
+                    <input
+                      type="number"
+                      value={selY}
+                      onChange={(e) => setSelY(Number(e.target.value))}
+                      disabled={busy}
+                      className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="block text-sm text-[var(--color-muted)]">
+                    Width
+                    <input
+                      type="number"
+                      value={selW}
+                      onChange={(e) => setSelW(Number(e.target.value))}
+                      disabled={busy}
+                      className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="block text-sm text-[var(--color-muted)]">
+                    Height
+                    <input
+                      type="number"
+                      value={selH}
+                      onChange={(e) => setSelH(Number(e.target.value))}
+                      disabled={busy}
+                      className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+                    />
+                  </label>
+                </div>
+                <Button variant="secondary" size="sm" disabled={!file || busy} loading={busy} onClick={() => void addTextHighlight()}>
+                  Highlight text in region
+                </Button>
+              </div>
+            )}
+          </>
         ) : (
           <div className="space-y-2">
             {tool === 'stickyNote' ? (
@@ -361,11 +513,23 @@ export function AnnotateTool() {
         {error ? (
         <ToolError message={error} fileName={file?.name} onRetry={() => { setError(null); void exportFlattened(); }} />
       ) : null}
-        {progress ? (
+        {busy && progress ? (
+          <ToolProgress
+            stage={progress}
+            elapsedLabel={elapsedLabel}
+            onCancel={() => {
+              cancelledRef.current = true;
+              setProgress('Cancelling after current page…');
+            }}
+          />
+        ) : progress && !busy ? (
           <p className="text-sm text-[var(--color-muted)]" aria-live="polite">
             {progress}
           </p>
         ) : null}
+        <p className="text-xs text-[var(--color-muted)]">
+          Cancel finishes the current page, then stops (no mid-step abort).
+        </p>
       </div>
     </ToolWorkbench>
   );

@@ -3,6 +3,7 @@
  */
 
 import { loadReadablePdf } from '../assertPdfReadable';
+import { PDFName, PDFString } from 'pdf-lib';
 
 export type FormFieldType =
   | 'text'
@@ -35,6 +36,29 @@ export interface CreateFormFieldsOptions {
   fields: FormFieldSpec[];
 }
 
+const FIELD_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+export function assertValidFormFieldName(name: string): void {
+  if (!FIELD_NAME_RE.test(name)) {
+    throw new Error(
+      `Field name “${name}” must start with a letter or underscore and use only letters, digits, and underscores.`
+    );
+  }
+}
+
+function applyTooltip(
+  field: { acroField: { dict: { set: (k: PDFName, v: PDFString) => void } } },
+  tooltip?: string
+): void {
+  const t = tooltip?.trim();
+  if (!t) return;
+  try {
+    field.acroField.dict.set(PDFName.of('TU'), PDFString.of(t));
+  } catch {
+    // best-effort
+  }
+}
+
 export async function createFormFields(
   options: CreateFormFieldsOptions
 ): Promise<Uint8Array> {
@@ -51,6 +75,7 @@ export async function createFormFields(
   for (const spec of options.fields) {
     const name = spec.name.trim();
     if (!name) throw new Error('Every field needs a name.');
+    assertValidFormFieldName(name);
     if (usedNames.has(name)) {
       throw new Error(`Duplicate field name “${name}”.`);
     }
@@ -61,6 +86,12 @@ export async function createFormFields(
     }
     if (!(spec.w > 0) || !(spec.h > 0)) {
       throw new Error(`Field “${name}” needs positive width and height.`);
+    }
+    if (
+      (spec.type === 'radio' || spec.type === 'dropdown') &&
+      (!spec.options || spec.options.length === 0)
+    ) {
+      throw new Error(`Field “${name}” needs at least one option.`);
     }
 
     const page = doc.getPage(spec.page - 1);
@@ -84,6 +115,7 @@ export async function createFormFields(
           field.setText(spec.defaultValue);
         }
         field.addToPage(page, box);
+        applyTooltip(field, spec.tooltip);
         break;
       }
       case 'signature': {
@@ -94,42 +126,42 @@ export async function createFormFields(
         field.enableMultiline();
         field.setText(spec.defaultValue || '');
         field.addToPage(page, box);
+        applyTooltip(field, spec.tooltip);
         break;
       }
       case 'checkbox': {
         const field = form.createCheckBox(name);
         if (spec.required) field.enableRequired();
         field.addToPage(page, box);
+        applyTooltip(field, spec.tooltip);
         break;
       }
       case 'radio': {
         const field = form.createRadioGroup(name);
         if (spec.required) field.enableRequired();
-        const opts =
-          spec.options && spec.options.length ? spec.options : ['Yes', 'No'];
+        const opts = spec.options!;
         opts.forEach((opt, i) => {
           field.addOptionToPage(opt, page, {
             ...box,
             y: box.y - i * (box.height + 4),
           });
         });
+        applyTooltip(field, spec.tooltip);
         break;
       }
       case 'dropdown': {
         const field = form.createDropdown(name);
         if (spec.required) field.enableRequired();
-        const opts =
-          spec.options && spec.options.length
-            ? spec.options
-            : ['Option 1', 'Option 2'];
-        field.addOptions(opts);
+        field.addOptions(spec.options!);
         field.addToPage(page, box);
+        applyTooltip(field, spec.tooltip);
         break;
       }
       case 'button': {
         const field = form.createButton(name);
         if (spec.required) field.enableRequired();
         field.addToPage(spec.label || name, page, box);
+        applyTooltip(field, spec.tooltip);
         break;
       }
       default: {

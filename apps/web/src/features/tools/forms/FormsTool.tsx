@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench } from '../ToolWorkbench';
 import { ToolError } from '../ToolError';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
 import { useToolHandoff } from '../useToolHandoff';
 import { loadReadablePdf } from '../assertPdfReadable';
 import {
@@ -31,9 +33,12 @@ export function FormsTool() {
   const [required, setRequired] = useState(false);
   const [optionsText, setOptionsText] = useState('Option A, Option B');
   const [label, setLabel] = useState('Submit');
+  const [tooltip, setTooltip] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const cancelledRef = useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
 
   const file = files[0]?.file;
 
@@ -69,6 +74,13 @@ export function FormsTool() {
       setError('Field name is required.');
       return;
     }
+    // Validate alphanumeric/underscore; must start with letter or underscore
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
+      setError(
+        'Field name must start with a letter or underscore and use only letters, digits, and underscores.'
+      );
+      return;
+    }
     if (pageCount > 0 && (page < 1 || page > pageCount)) {
       setError(`Page must be between 1 and ${pageCount}.`);
       return;
@@ -84,6 +96,11 @@ export function FormsTool() {
             .map((s) => s.trim())
             .filter(Boolean)
         : undefined;
+    // Stricter validation for radio/dropdown
+    if ((type === 'radio' || type === 'dropdown') && (!options || options.length === 0)) {
+      setError(`${type === 'radio' ? 'Radio' : 'Dropdown'} fields require at least one option.`);
+      return;
+    }
     const spec: FormFieldSpec & { id: string } = {
       id: makeId(),
       type,
@@ -96,6 +113,7 @@ export function FormsTool() {
       required,
       options,
       label: type === 'button' ? label : undefined,
+      tooltip: tooltip.trim() || undefined,
     };
     setFields((prev) => [...prev, spec]);
     setName((n) => {
@@ -110,17 +128,46 @@ export function FormsTool() {
     setFields((prev) => prev.filter((f) => f.id !== id));
   };
 
+  const moveFieldUp = (id: string) => {
+    setFields((prev) => {
+      const idx = prev.findIndex((f) => f.id === id);
+      if (idx <= 0) return prev;
+      const next = [...prev];
+      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+      return next;
+    });
+  };
+
+  const moveFieldDown = (id: string) => {
+    setFields((prev) => {
+      const idx = prev.findIndex((f) => f.id === id);
+      if (idx < 0 || idx >= prev.length - 1) return prev;
+      const next = [...prev];
+      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+      return next;
+    });
+  };
+
   const exportPdf = async () => {
     if (!file || fields.length === 0) return;
+    cancelledRef.current = false;
     setBusy(true);
     setError(null);
     setProgress('Writing form fields…');
     try {
       const bytes = await file.arrayBuffer();
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
       const out = await createFormFields({
         bytes,
         fields: fields.map(({ id: _id, ...rest }) => rest),
       });
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
       const outName = file.name.replace(/\.pdf$/i, '') + '-form.pdf';
       downloadBlobLocally(new Blob([out], { type: 'application/pdf' }), outName);
       setProgress(`Downloaded with ${fields.length} field(s)`);
@@ -156,9 +203,9 @@ export function FormsTool() {
     >
       <p className="text-xs text-[var(--color-muted)]">
         Coordinates use PDF points with origin at the bottom-left of the page.
-        Date and Signature types create text widgets (pdf-lib has no native date/Sig
-        creators) — suitable as fillable placeholders, not Acrobat date/signature field
-        semantics.
+        List order is tab order on export. Date and Signature types create text
+        widgets (pdf-lib has no native date/Sig creators) — fillable placeholders,
+        not Acrobat date/signature field semantics.
       </p>
 
       <fieldset className="grid gap-3 rounded-xl border border-[var(--color-border)] p-3 sm:grid-cols-2">
@@ -274,6 +321,16 @@ export function FormsTool() {
             />
           </label>
         ) : null}
+        <label className="block text-sm text-[var(--color-muted)] sm:col-span-2">
+          Tooltip (optional)
+          <input
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
+            value={tooltip}
+            onChange={(e) => setTooltip(e.target.value)}
+            disabled={busy}
+            placeholder="Hover text for this field"
+          />
+        </label>
         <div className="sm:col-span-2">
           <Button type="button" variant="outline" size="sm" onClick={addField} disabled={busy || !file}>
             Add to list
@@ -282,34 +339,75 @@ export function FormsTool() {
       </fieldset>
 
       {fields.length > 0 ? (
-        <ul className="space-y-2" aria-label="Form fields">
-          {fields.map((f) => (
-            <li
-              key={f.id}
-              className="flex items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
-            >
-              <span>
-                <span className="font-medium text-[var(--color-ink)]">{f.name}</span>
-                <span className="ml-2 text-xs text-[var(--color-muted)]">
-                  {f.type} · p{f.page} · ({f.x},{f.y}) {f.w}×{f.h}
-                  {f.required ? ' · required' : ''}
-                </span>
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => removeField(f.id)}
-                disabled={busy}
+        <>
+          <p className="text-xs text-[var(--color-muted)]">
+            List order determines tab order in the PDF. Use arrows to reorder fields.
+          </p>
+          <ul className="space-y-2" aria-label="Form fields">
+            {fields.map((f, idx) => (
+              <li
+                key={f.id}
+                className="flex items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm"
               >
-                Remove
-              </Button>
-            </li>
-          ))}
-        </ul>
+                <span className="flex-1">
+                  <span className="font-medium text-[var(--color-ink)]">{f.name}</span>
+                  <span className="ml-2 text-xs text-[var(--color-muted)]">
+                    {f.type} · p{f.page} · ({f.x},{f.y}) {f.w}×{f.h}
+                    {f.required ? ' · required' : ''}
+                  </span>
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => moveFieldUp(f.id)}
+                    disabled={busy || idx === 0}
+                    aria-label="Move up"
+                  >
+                    ↑
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => moveFieldDown(f.id)}
+                    disabled={busy || idx === fields.length - 1}
+                    aria-label="Move down"
+                  >
+                    ↓
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeField(f.id)}
+                    disabled={busy}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
       ) : null}
 
-      {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
+      {busy && progress ? (
+        <ToolProgress
+          stage={progress}
+          elapsedLabel={elapsedLabel}
+          onCancel={() => {
+            cancelledRef.current = true;
+            setProgress('Cancelling after current step…');
+          }}
+        />
+      ) : progress && !busy ? (
+        <p className="text-sm text-[var(--color-muted)]">{progress}</p>
+      ) : null}
+      <p className="text-xs text-[var(--color-muted)]">
+        Cancel finishes the current step, then stops (no mid-step abort).
+      </p>
       {error ? (
         <ToolError message={error} fileName={file?.name} onRetry={() => { setError(null); void exportPdf(); }} />
       ) : null}

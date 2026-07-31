@@ -1,4 +1,4 @@
-# PDFNexus — Platform status (Phases 5–24)
+# PDFNexus — Platform status (Phases 5–27)
 
 **No healthcare or legal compliance claims.** Browser/a11y rows below are a **manual QA checklist**, not a claim that every cell was validated in CI.
 
@@ -22,23 +22,27 @@
 
 Local downloads remain ungated. Email verification is optional delivery only.
 
-## Phase 5–22 (summary)
+## Phase 5–24 (summary)
 
-Through 22: workers (split/extract/images/compress), cancel settle + `cancelAndAwait`, Bates `writeNext` after download, nested pdf.js `disableWorker`, OCR Cancel/abort, honest manual QA templates.
+Workers, cancel honesty, Bates continuity, nested pdf.js `disableWorker`, OCR Cancel, download gates, honest manual QA templates.
 
-## Phase 23 (Bates UI + cancel honesty)
+## Phase 25 (soft cancel + evidence)
 
-- Bates: after successful deliver, **always** `setStart(next)` via `applyBatesDeliverUi` (post-download cancel no longer desyncs UI)
-- `cancelAndAwait` rethrows non-cancel errors (no masking as `WorkerCancelledError`)
-- Extract + Compress use `downloadWorkerOutputs` (skip download / stats when cancelled)
-- Excel OCR clears progress on abort early-return paths
+- ToolProgress + soft Cancel on Merge / Rotate / JpgToPdf and Annotate / Links / Forms / Overlay export
+- Excel OCR abort early-return progress-clear regression test
+- `downloadWorkerOutputs` comment covers Extract / Compress
 
-## Phase 24 (evidence)
+## Phase 26 (annotate + links)
 
-- Tests: Bates UI sync after cancel, `cancelAndAwait` preserves boom, forced `disableWorker` true/false, `pdfToImageBuffers` between-pages abort
-- Cancel catch paths aligned on `WorkerCancelledError`
+- Text-layer highlight via `textLayerQuads` (area highlight remains)
+- Existing URI Link extract / list / edit / delete; export strips then re-adds
+- Annotate / edit-links SEO copy updated
+
+## Phase 27 (forms + callouts + status)
+
+- Forms: list order = tab order (Up/Down), name/options validation, optional tooltip
+- Typed `CalloutOverlay` (box + text + optional leader) in flatten + OverlayTool
 - §19 / §20 remain **templates / manual QA** — no invented pass rates
-- Remaining: soft-tool mid-op AbortSignal, §9 / CMS / DAG / full-library cloud, measured perf/a11y manual only
 
 ## §19 Performance notes (templates / known limits)
 
@@ -48,7 +52,7 @@ Numbers below are **design limits and patterns**, not measured CI benchmarks col
 - Inside module workers, pdf.js runs with **`disableWorker: true`** (avoids nested workers)
 - Soft UI hint around **80MB+** local PDFs (guidance only)
 - Cloud imports/exports capped at **50MB**
-- Soft Cancel on Flatten/Protect/Unlock/Crop/Resize finishes the current await step, then stops
+- Soft Cancel finishes the current await step, then stops
 
 ## §20 Browser / device matrix (manual QA — not CI-validated)
 
@@ -65,9 +69,9 @@ Numbers below are **design limits and patterns**, not measured CI benchmarks col
 | --- | --- |
 | Cancel after worker start does not orphan-reject | _not recorded_ |
 | Bates download then Cancel still advances next number (storage + UI start) | _not recorded_ |
-| Excel OCR Cancel clears progress / stops uploads | _not recorded_ |
-| Extract/Compress Cancel after worker skips download | _not recorded_ |
-| JPEG raster worker (disableWorker) | _not recorded_ |
+| Text-layer highlight on text PDF | _not recorded_ |
+| Existing URI links listed on upload | _not recorded_ |
+| Typed callout exports as one overlay | _not recorded_ |
 
 ## Known limitations / remaining gaps
 
@@ -80,6 +84,8 @@ Numbers below are **design limits and patterns**, not measured CI benchmarks col
 - Mid-operation AbortSignal for soft-cancel tools (Flatten/Protect/etc.)
 - Full §13 ETA / output-size telemetry
 - Measured perf / full a11y pass — manual only
+- GoTo / internal link destinations (URI-only extract)
+- Editable PPTX reconstruction beyond image slides
 
 ## Env vars (cloud)
 

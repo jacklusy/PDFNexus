@@ -4,9 +4,9 @@ import { ToolPageShell } from '@/features/tools/ToolPageShell';
 import { LinksTool } from '@/features/tools/links/LinksTool';
 
 export const metadata: Metadata = pageMetadata({
-  title: 'Edit PDF Links Online — Add Clickable URI Annotations',
+  title: 'Edit PDF Links Online — Add & Manage URI Annotations',
   description:
-    'Add clickable hyperlink annotations to PDF pages by URI and rectangle. Export embeds Link annotations locally in your browser. Existing link extraction is not included in Phase 2.',
+    'Extract existing URI links, add new clickable hyperlink annotations, edit or delete them, then export. Runs locally in your browser.',
   path: '/edit-links-pdf',
 });
 
@@ -14,16 +14,16 @@ export default function Page() {
   return (
     <ToolPageShell
       title="Edit PDF links"
-      description="Add URI link annotations by page and rectangle (PDF points, bottom-left origin). Export writes Link annotations plus a visual indicator."
+      description="Existing URI Link annotations are listed on upload. Add, edit, or delete links by page and rectangle, then export."
       path="/edit-links-pdf"
       howItWorks={[
-        'Upload the PDF that needs links.',
-        'Enter a URI, page number, and rectangle (x, y, width, height).',
-        'Review the list, edit or delete entries, then export with link annotations.',
+        'Upload the PDF — existing http/https/mailto links are extracted into the list.',
+        'Edit URIs and rectangles, or add new links.',
+        'Export strips old Link annotations and writes the current list.',
       ]}
       privacyNote="This tool runs in your browser. Your file is not uploaded to process it."
       limits={[
-        'Phase 2 does not extract or list existing links from the uploaded PDF.',
+        'Only URI actions are extracted (not GoTo / internal destinations).',
         'Coordinates are manual (PDF points); there is no click-to-place canvas yet.',
         'Link behavior depends on the PDF viewer; some readers may restrict external URIs.',
       ]}
@@ -31,12 +31,12 @@ export default function Page() {
         {
           question: 'Can I edit links that are already in the PDF?',
           answer:
-            'Not in Phase 2. You can add new links and export them. Existing-link extraction is planned for a later phase.',
+            'Yes for URI links. They appear in the list marked Existing. Edit or delete them, then export.',
         },
         {
           question: 'Are links just visual underlines?',
           answer:
-            'Export draws a visual cue and also attempts to register a real PDF Link annotation with a URI action.',
+            'Export draws a visual cue and also registers a real PDF Link annotation with a URI action.',
         },
       ]}
       related={[

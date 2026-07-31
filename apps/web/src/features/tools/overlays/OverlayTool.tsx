@@ -5,6 +5,8 @@ import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { ToolError } from '../ToolError';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { flattenOverlays } from './flattenOverlays';
 import {
@@ -18,6 +20,7 @@ import {
   type ShapeOverlay,
   type WatermarkOverlay,
   type FreehandOverlay,
+  type CalloutOverlay,
 } from './types';
 
 export type OverlayToolMode =
@@ -38,6 +41,8 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const cancelledRef = useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
   const [sigText, setSigText] = useState('');
   const [consent, setConsent] = useState(false);
   const [textValue, setTextValue] = useState('Sample text');
@@ -178,9 +183,9 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
   const addCallout = () => {
     const boxX = 72;
     const boxY = pageSize.h - 220;
-    const rect: ShapeOverlay = {
+    const item: CalloutOverlay = {
       id: createId(),
-      kind: 'rect',
+      kind: 'callout',
       page: activePage,
       x: boxX,
       y: boxY,
@@ -188,25 +193,16 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
       height: 80,
       rotation: 0,
       opacity: 1,
-      stroke: '#b45309',
-      fill: '#fffbeb',
-      strokeWidth: 1.5,
-    };
-    const label: TextOverlay = {
-      id: createId(),
-      kind: 'text',
-      page: activePage,
-      x: boxX + 10,
-      y: boxY + 50,
-      width: 180,
-      height: 40,
-      rotation: 0,
-      opacity: 1,
       text: textValue || 'Callout',
       fontSize: 12,
       color: '#78350f',
+      stroke: '#b45309',
+      fill: '#fffbeb',
+      strokeWidth: 1.5,
+      leaderX: boxX - 40,
+      leaderY: boxY + 40,
     };
-    setOverlays((prev) => [...prev, rect, label]);
+    setOverlays((prev) => [...prev, item]);
   };
 
   const placeFreehand = () => {
@@ -310,14 +306,24 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
 
   const run = async () => {
     if (!file || overlays.length === 0) return;
+    cancelledRef.current = false;
     setBusy(true);
     setError(null);
     setProgress('Flattening overlays…');
     try {
       const bytes = await file.arrayBuffer();
-      const out = await flattenOverlays(bytes, overlays, (c, t) =>
-        setProgress(`Page ${c}/${t}`)
-      );
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
+      const out = await flattenOverlays(bytes, overlays, (c, t) => {
+        if (cancelledRef.current) throw new Error('Cancelled');
+        setProgress(`Page ${c}/${t}`);
+      });
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
       const suffix =
         mode === 'sign'
           ? '-signed'
@@ -332,8 +338,14 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
       );
       setProgress('Downloaded');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setProgress(null);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === 'Cancelled' || cancelledRef.current) {
+        setProgress(null);
+        setError(null);
+      } else {
+        setError(msg);
+        setProgress(null);
+      }
     } finally {
       setBusy(false);
     }
@@ -764,7 +776,21 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
         </>
       ) : null}
 
-      {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
+      {busy && progress ? (
+        <ToolProgress
+          stage={progress}
+          elapsedLabel={elapsedLabel}
+          onCancel={() => {
+            cancelledRef.current = true;
+            setProgress('Cancelling after current page…');
+          }}
+        />
+      ) : progress && !busy ? (
+        <p className="text-sm text-[var(--color-muted)]">{progress}</p>
+      ) : null}
+      <p className="text-xs text-[var(--color-muted)]">
+        Cancel finishes the current page, then stops (no mid-step abort).
+      </p>
       {error ? (
         <ToolError message={error} fileName={file?.name} onRetry={() => { setError(null); void run(); }} />
       ) : null}

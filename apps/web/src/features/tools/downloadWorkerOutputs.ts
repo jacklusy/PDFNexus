@@ -1,6 +1,7 @@
 /**
  * Post-worker download gate: skip zip/download when already cancelled.
- * Used by Split / PDF→images so Cancel after the worker does not save artifacts.
+ * Used by Split / Extract / Compress / PDF→images so Cancel after the worker
+ * does not save artifacts (or set Compress stats).
  */
 export async function downloadWorkerOutputs(options: {
   isCancelled: () => boolean;

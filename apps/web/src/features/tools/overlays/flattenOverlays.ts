@@ -258,6 +258,52 @@ function drawOnPage(
           // Visual label already burned; annotation is best-effort
         }
       }
+      return;
+    }
+    if (item.kind === 'callout') {
+      const stroke = parseColor(item.stroke || '#b45309');
+      const fill = item.fill ? parseColor(item.fill) : undefined;
+      const textColor = parseColor(item.color || '#78350f');
+      const sw = item.strokeWidth ?? 1.5;
+      page.drawRectangle({
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        height: item.height,
+        borderColor: stroke,
+        borderWidth: sw,
+        color: fill,
+        opacity,
+      });
+      if (
+        item.leaderX != null &&
+        item.leaderY != null &&
+        Number.isFinite(item.leaderX) &&
+        Number.isFinite(item.leaderY)
+      ) {
+        const fromX = item.x;
+        const fromY = item.y + item.height / 2;
+        page.drawLine({
+          start: { x: fromX, y: fromY },
+          end: { x: item.leaderX, y: item.leaderY },
+          thickness: sw,
+          color: stroke,
+          opacity,
+        });
+      }
+      const text = item.text || '';
+      if (text) {
+        page.drawText(text.slice(0, 400), {
+          x: item.x + 8,
+          y: item.y + item.height - (item.fontSize || 12) - 6,
+          size: item.fontSize || 12,
+          font: helpers.font,
+          color: textColor,
+          opacity,
+          maxWidth: Math.max(40, item.width - 16),
+        });
+      }
+      return;
     }
   })();
 }

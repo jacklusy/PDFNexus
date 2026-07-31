@@ -11,7 +11,8 @@ export type OverlayKind =
   | 'highlight'
   | 'stickyNote'
   | 'pageComment'
-  | 'link';
+  | 'link'
+  | 'callout';
 
 /** Normalized page coords: origin bottom-left, units = PDF points. */
 export interface OverlayBase {
@@ -108,6 +109,21 @@ export interface PageCommentOverlay extends OverlayBase {
 export interface LinkOverlay extends OverlayBase {
   kind: 'link';
   uri: string;
+  /** Optional source marker: 'existing' for pre-existing PDF links, 'new' for user-added. */
+  source?: 'existing' | 'new';
+}
+
+export interface CalloutOverlay extends OverlayBase {
+  kind: 'callout';
+  text: string;
+  fontSize?: number;
+  color?: string;
+  stroke?: string;
+  fill?: string;
+  strokeWidth?: number;
+  /** Optional leader tip in page coords. */
+  leaderX?: number;
+  leaderY?: number;
 }
 
 export type OverlayItem =
@@ -120,7 +136,8 @@ export type OverlayItem =
   | HighlightOverlay
   | StickyNoteOverlay
   | PageCommentOverlay
-  | LinkOverlay;
+  | LinkOverlay
+  | CalloutOverlay;
 
 export function createId(): string {
   return `ov-${Math.random().toString(36).slice(2, 10)}`;

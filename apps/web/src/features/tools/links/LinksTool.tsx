@@ -1,14 +1,17 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { ToolError } from '../ToolError';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { flattenOverlays } from '../overlays/flattenOverlays';
 import { createId, type LinkOverlay, type OverlayItem } from '../overlays/types';
 import { assertAllowedLinkUri, isAllowedLinkUri } from '../overlays/linkUri';
+import { extractLinkAnnotations, stripAllLinkAnnotations } from '../overlays/extractLinkAnnotations';
 
 export function LinksTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
@@ -17,6 +20,8 @@ export function LinksTool() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const cancelledRef = useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
 
   const [uri, setUri] = useState('https://');
   const [page, setPage] = useState(1);
@@ -42,9 +47,13 @@ export function LinksTool() {
         const n = doc.getPageCount();
         setPageCount(n);
         setPage(1);
-        setOverlays([]);
         setError(null);
         setProgress(null);
+        
+        // Extract existing links
+        const existing = await extractLinkAnnotations(buf);
+        if (cancelled) return;
+        setOverlays(existing);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Could not read PDF');
       }
@@ -85,6 +94,7 @@ export function LinksTool() {
       rotation: 0,
       opacity: 1,
       uri: assertAllowedLinkUri(trimmed),
+      source: 'new',
     };
     setOverlays((prev) => [...prev, item]);
     setError(null);
@@ -107,21 +117,49 @@ export function LinksTool() {
 
   const exportWithLinks = async () => {
     if (!file) return;
+    cancelledRef.current = false;
     setBusy(true);
     setError(null);
-    setProgress('Writing link annotations…');
+    setProgress('Stripping existing link annotations…');
     try {
       const bytes = await file.arrayBuffer();
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
+      // Strip all link annotations from the PDF
+      const stripped = await stripAllLinkAnnotations(bytes);
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
+      setProgress('Re-adding link annotations…');
+      // Re-add all links from overlays list via flattenOverlays
       const items: OverlayItem[] = overlays;
-      const out = await flattenOverlays(bytes, items, (c, t) =>
-        setProgress(`Processing page ${Math.min(c + 1, t)} / ${t}`)
-      );
+      const strippedBuf = stripped.buffer.slice(
+        stripped.byteOffset,
+        stripped.byteOffset + stripped.byteLength
+      ) as ArrayBuffer;
+      const out = await flattenOverlays(strippedBuf, items, (c, t) => {
+        if (cancelledRef.current) throw new Error('Cancelled');
+        setProgress(`Processing page ${Math.min(c + 1, t)} / ${t}`);
+      });
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
       const name = file.name.replace(/\.pdf$/i, '') + '-links.pdf';
       downloadBlobLocally(new Blob([out], { type: 'application/pdf' }), name);
       setProgress('Downloaded with link annotations');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setProgress(null);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === 'Cancelled' || cancelledRef.current) {
+        setProgress(null);
+        setError(null);
+      } else {
+        setError(msg);
+        setProgress(null);
+      }
     } finally {
       setBusy(false);
     }
@@ -130,7 +168,7 @@ export function LinksTool() {
   return (
     <ToolWorkbench
       title="Edit PDF links"
-      description="Add clickable URI link annotations by page and rectangle. Existing links are not extracted in Phase 2."
+      description="Add and edit clickable URI link annotations. Existing links are extracted and can be edited or removed."
       files={files}
       onFilesChange={(next) => {
         setFiles(next);
@@ -233,7 +271,7 @@ export function LinksTool() {
           </h3>
           {links.length === 0 ? (
             <p className="mt-2 text-xs text-[var(--color-muted)]">
-              No links yet. Existing PDF links are not listed in Phase 2.
+              No links found or added yet.
             </p>
           ) : (
             <ul className="mt-2 space-y-2">
@@ -242,13 +280,24 @@ export function LinksTool() {
                   key={item.id}
                   className="space-y-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-2"
                 >
-                  <input
-                    type="url"
-                    value={item.uri}
-                    onChange={(e) => updateLink(item.id, { uri: e.target.value })}
-                    className="w-full rounded border border-[var(--color-border)] px-2 py-1 text-sm"
-                    aria-label="Link URI"
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="url"
+                      value={item.uri}
+                      onChange={(e) => updateLink(item.id, { uri: e.target.value })}
+                      className="flex-1 rounded border border-[var(--color-border)] px-2 py-1 text-sm"
+                      aria-label="Link URI"
+                    />
+                    <span
+                      className={
+                        item.source === 'existing'
+                          ? 'rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                          : 'rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200'
+                      }
+                    >
+                      {item.source === 'existing' ? 'Existing' : 'New'}
+                    </span>
+                  </div>
                   <div className="flex flex-wrap gap-2 text-xs">
                     <label>
                       Page{' '}
@@ -323,11 +372,23 @@ export function LinksTool() {
         {error ? (
         <ToolError message={error} fileName={file?.name} onRetry={() => { setError(null); void exportWithLinks(); }} />
       ) : null}
-        {progress ? (
+        {busy && progress ? (
+          <ToolProgress
+            stage={progress}
+            elapsedLabel={elapsedLabel}
+            onCancel={() => {
+              cancelledRef.current = true;
+              setProgress('Cancelling after current page…');
+            }}
+          />
+        ) : progress && !busy ? (
           <p className="text-sm text-[var(--color-muted)]" aria-live="polite">
             {progress}
           </p>
         ) : null}
+        <p className="text-xs text-[var(--color-muted)]">
+          Cancel finishes the current page, then stops (no mid-step abort).
+        </p>
       </div>
     </ToolWorkbench>
   );
