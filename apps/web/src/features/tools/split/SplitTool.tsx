@@ -172,6 +172,7 @@ export function SplitTool() {
     } catch (e) {
       if (e instanceof WorkerCancelledError) {
         setProgress(null);
+        setError(null);
       } else {
         setError(e instanceof Error ? e.message : String(e));
         setProgress(null);

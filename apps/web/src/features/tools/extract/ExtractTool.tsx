@@ -11,6 +11,8 @@ import { ToolProgress } from '../ToolProgress';
 import { useTimedProgress } from '../useTimedProgress';
 import { softLargePdfHint } from '../softLargePdfHint';
 import { runWorkerTask, WorkerCancelledError, cancelAndAwait } from '../runInWorker';
+import { downloadWorkerOutputs } from '../downloadWorkerOutputs';
+import { zipOutputs } from '../zipOutputs';
 
 export function ExtractTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
@@ -129,20 +131,29 @@ export function ExtractTool() {
         await cancelAndAwait(cancel, promise);
       }
       const result = await promise;
-      if (cancelledBeforeWorkerRef.current) {
+      const outName = file.name.replace(/\.pdf$/i, '') + '-extract.pdf';
+      const outcome = await downloadWorkerOutputs({
+        isCancelled: () => cancelledBeforeWorkerRef.current,
+        files: [
+          {
+            fileName: outName,
+            blob: new Blob([result.bytes], { type: 'application/pdf' }),
+          },
+        ],
+        zipName: outName.replace(/\.pdf$/i, '') + '.zip',
+        download: downloadBlobLocally,
+        zipOutputs,
+      });
+      if (outcome === 'cancelled') {
         throw new WorkerCancelledError();
       }
-      const outName = file.name.replace(/\.pdf$/i, '') + '-extract.pdf';
-      downloadBlobLocally(
-        new Blob([result.bytes], { type: 'application/pdf' }),
-        outName
-      );
       setProgress(`Done — ${result.pageCount} page${result.pageCount === 1 ? '' : 's'}`);
       setProgressCurrent(0);
       setProgressTotal(0);
     } catch (e) {
       if (e instanceof WorkerCancelledError) {
         setProgress(null);
+        setError(null);
       } else {
         setError(e instanceof Error ? e.message : String(e));
         setProgress(null);

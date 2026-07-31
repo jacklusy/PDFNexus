@@ -18,7 +18,7 @@ import {
   type BatesAlign,
   type BatesPosition,
 } from './batesPdf';
-import { deliverBatesOutputs } from './deliverBatesOutputs';
+import { deliverBatesOutputs, applyBatesDeliverUi } from './deliverBatesOutputs';
 
 function readStoredNext(): number {
   try {
@@ -163,10 +163,14 @@ export function BatesTool() {
         zipOutputs,
         isCancelled: () => cancelledRef.current,
       });
-      if (cancelledRef.current) throw new Error('Cancelled');
-      setStart(next);
+      // Delivery already committed writeNext after download — always sync UI start.
       setProgress(
-        `Downloaded ${outputs.length} file(s). Next number saved as ${next} for continuity.`
+        applyBatesDeliverUi({
+          next,
+          fileCount: outputs.length,
+          cancelledAfterDownload: cancelledRef.current,
+          setStart,
+        })
       );
       setProgressCurrent(0);
       setProgressTotal(0);

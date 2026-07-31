@@ -9,9 +9,12 @@ type PdfjsGlobalWorkerHost = {
 };
 
 let workerConfigured = false;
+/** Test-only override for {@link isPdfJsModuleWorkerContext}. */
+let workerContextOverride: boolean | null = null;
 
 /** True when running inside a Worker (no `window`). */
 export function isPdfJsModuleWorkerContext(): boolean {
+  if (workerContextOverride !== null) return workerContextOverride;
   return typeof window === 'undefined' && typeof self !== 'undefined';
 }
 
@@ -52,4 +55,12 @@ export function pdfJsGetDocumentInit(data: ArrayBuffer): {
 /** Test helper — reset module state between tests. */
 export function resetPdfJsWorkerConfiguredForTests(): void {
   workerConfigured = false;
+  workerContextOverride = null;
+}
+
+/** Test helper — force worker vs main-thread detection. */
+export function setPdfJsModuleWorkerContextForTests(
+  value: boolean | null
+): void {
+  workerContextOverride = value;
 }

@@ -146,7 +146,7 @@ export function PdfToImagesTool() {
       setProgressCurrent(0);
       setProgressTotal(0);
     } catch (e) {
-      if (e instanceof WorkerCancelledError || (e instanceof Error && e.message === 'Cancelled')) {
+      if (e instanceof WorkerCancelledError) {
         setProgress(null);
         setError(null);
       } else {

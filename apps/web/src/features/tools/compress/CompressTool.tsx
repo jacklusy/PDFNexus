@@ -16,6 +16,8 @@ import {
   type CompressResult,
 } from './compressPdf';
 import { runWorkerTask, WorkerCancelledError, cancelAndAwait } from '../runInWorker';
+import { downloadWorkerOutputs } from '../downloadWorkerOutputs';
+import { zipOutputs } from '../zipOutputs';
 
 export function CompressTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
@@ -122,7 +124,6 @@ export function CompressTool() {
         await cancelAndAwait(cancel, promise);
       }
       const workerResult = await promise;
-      if (cancelledRef.current) throw new WorkerCancelledError();
       const result: CompressResult = {
         bytes: new Uint8Array(workerResult.bytes),
         originalSize: workerResult.originalSize,
@@ -132,17 +133,28 @@ export function CompressTool() {
         settings: workerResult.settings,
         imagesReencoded: workerResult.imagesReencoded,
       };
-      setStats(result);
       const name = file.name.replace(/\.pdf$/i, '') + '-compressed.pdf';
-      downloadBlobLocally(
-        new Blob([result.bytes], { type: 'application/pdf' }),
-        name
-      );
+      const outcome = await downloadWorkerOutputs({
+        isCancelled: () => cancelledRef.current,
+        files: [
+          {
+            fileName: name,
+            blob: new Blob([result.bytes], { type: 'application/pdf' }),
+          },
+        ],
+        zipName: name.replace(/\.pdf$/i, '') + '.zip',
+        download: downloadBlobLocally,
+        zipOutputs,
+      });
+      if (outcome === 'cancelled') {
+        throw new WorkerCancelledError();
+      }
+      setStats(result);
       setProgress('Downloaded');
       setProgressCurrent(0);
       setProgressTotal(0);
     } catch (e) {
-      if (e instanceof WorkerCancelledError || (e instanceof Error && e.message === 'Cancelled')) {
+      if (e instanceof WorkerCancelledError) {
         setProgress(null);
         setError(null);
       } else {

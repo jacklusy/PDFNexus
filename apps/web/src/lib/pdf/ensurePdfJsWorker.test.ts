@@ -1,20 +1,26 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
-  isPdfJsModuleWorkerContext,
   pdfJsGetDocumentInit,
   resetPdfJsWorkerConfiguredForTests,
+  setPdfJsModuleWorkerContextForTests,
 } from '@/lib/pdf/ensurePdfJsWorker';
 
 describe('pdfJsGetDocumentInit', () => {
-  it('disables nested worker when in worker-like context', () => {
+  afterEach(() => {
     resetPdfJsWorkerConfiguredForTests();
-    // In vitest/node there is typically no window → treat as worker context.
+  });
+
+  it('sets disableWorker true in forced worker context', () => {
+    setPdfJsModuleWorkerContextForTests(true);
     const init = pdfJsGetDocumentInit(new ArrayBuffer(4));
-    if (isPdfJsModuleWorkerContext()) {
-      expect(init.disableWorker).toBe(true);
-    } else {
-      expect(init.disableWorker).toBeUndefined();
-    }
+    expect(init.disableWorker).toBe(true);
+    expect(init.isEvalSupported).toBe(false);
+  });
+
+  it('omits disableWorker in forced main-thread context', () => {
+    setPdfJsModuleWorkerContextForTests(false);
+    const init = pdfJsGetDocumentInit(new ArrayBuffer(4));
+    expect(init.disableWorker).toBeUndefined();
     expect(init.isEvalSupported).toBe(false);
   });
 });

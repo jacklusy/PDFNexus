@@ -76,6 +76,14 @@ describe('runWorkerTask cancel', () => {
     );
   });
 
+  it('cancelAndAwait rethrows non-cancel errors', async () => {
+    const boom = new Error('boom');
+    const promise = Promise.reject(boom);
+    // Prevent unhandled rejection before cancelAndAwait attaches
+    void promise.catch(() => undefined);
+    await expect(cancelAndAwait(() => undefined, promise)).rejects.toBe(boom);
+  });
+
   it('double cancel is idempotent', async () => {
     const { promise, cancel } = runWorkerTask<{ id: string }, { ok: true }>({
       workerUrl: new URL('https://example.test/worker.js'),

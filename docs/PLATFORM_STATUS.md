@@ -1,4 +1,4 @@
-# PDFNexus — Platform status (Phases 5–22)
+# PDFNexus — Platform status (Phases 5–24)
 
 **No healthcare or legal compliance claims.** Browser/a11y rows below are a **manual QA checklist**, not a claim that every cell was validated in CI.
 
@@ -22,26 +22,21 @@
 
 Local downloads remain ungated. Email verification is optional delivery only.
 
-## Phase 5–19 (summary)
+## Phase 5–22 (summary)
 
-See earlier docs. Through 19: workers (split/extract/images/compress raster), cancel settle-on-cancel, Bates continuity, ToolProgress, soft size hint, honest manual QA templates.
+Through 22: workers (split/extract/images/compress), cancel settle + `cancelAndAwait`, Bates `writeNext` after download, nested pdf.js `disableWorker`, OCR Cancel/abort, honest manual QA templates.
 
-## Phase 20 (cancel races)
+## Phase 23 (Bates UI + cancel honesty)
 
-- `cancelAndAwait`: cancel + await so worker rejections are never orphaned (Split / Extract / PDF→images / Compress)
-- OCR `finally` clears `busy`/`ocrBusy` only when generation is still current
-- Bates: after successful download, **always** `writeNext` (cancel only blocks before download starts)
+- Bates: after successful deliver, **always** `setStart(next)` via `applyBatesDeliverUi` (post-download cancel no longer desyncs UI)
+- `cancelAndAwait` rethrows non-cancel errors (no masking as `WorkerCancelledError`)
+- Extract + Compress use `downloadWorkerOutputs` (skip download / stats when cancelled)
+- Excel OCR clears progress on abort early-return paths
 
-## Phase 21 (nested workers + OCR cancel UX)
+## Phase 24 (evidence)
 
-- Module workers use `pdfJsGetDocumentInit` → `disableWorker: true` (no nested pdf.js worker)
-- OCR passes `AbortSignal` into page render (`pdfToImages`); Excel OCR has `ToolProgress` Cancel
-- Sidebar “No quality loss” softened; HTML `processingMode="local"`; EPUB/HTML single `arrayBuffer`
-- Real `downloadWorkerOutputs` gate (replaces stub cancel-before-zip “test”)
-
-## Phase 22 (evidence)
-
-- Tests: `cancelAndAwait`, Bates download-then-cancel still persists, OCR abort exact fetch counts, `downloadWorkerOutputs`, OCR finally gen-gate, `disableWorker` init
+- Tests: Bates UI sync after cancel, `cancelAndAwait` preserves boom, forced `disableWorker` true/false, `pdfToImageBuffers` between-pages abort
+- Cancel catch paths aligned on `WorkerCancelledError`
 - §19 / §20 remain **templates / manual QA** — no invented pass rates
 - Remaining: soft-tool mid-op AbortSignal, §9 / CMS / DAG / full-library cloud, measured perf/a11y manual only
 
@@ -69,8 +64,9 @@ Numbers below are **design limits and patterns**, not measured CI benchmarks col
 | Check | Result |
 | --- | --- |
 | Cancel after worker start does not orphan-reject | _not recorded_ |
-| Bates download then Cancel still advances next number | _not recorded_ |
-| Excel OCR Cancel stops further uploads | _not recorded_ |
+| Bates download then Cancel still advances next number (storage + UI start) | _not recorded_ |
+| Excel OCR Cancel clears progress / stops uploads | _not recorded_ |
+| Extract/Compress Cancel after worker skips download | _not recorded_ |
 | JPEG raster worker (disableWorker) | _not recorded_ |
 
 ## Known limitations / remaining gaps

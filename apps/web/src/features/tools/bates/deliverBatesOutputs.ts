@@ -29,3 +29,19 @@ export async function deliverBatesOutputs(options: {
   // Artifact already delivered — always persist continuity.
   options.writeNext(options.next);
 }
+
+/**
+ * After successful deliver, always sync UI start to `next`
+ * (even if the user cancelled after download).
+ */
+export function applyBatesDeliverUi(options: {
+  next: number;
+  fileCount: number;
+  cancelledAfterDownload: boolean;
+  setStart: (n: number) => void;
+}): string {
+  options.setStart(options.next);
+  return options.cancelledAfterDownload
+    ? `Downloaded; next number saved as ${options.next} for continuity.`
+    : `Downloaded ${options.fileCount} file(s). Next number saved as ${options.next} for continuity.`;
+}

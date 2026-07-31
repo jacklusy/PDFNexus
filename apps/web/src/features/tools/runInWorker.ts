@@ -103,7 +103,7 @@ export function runWorkerTask<TRequest, TResult>(options: {
 
 /**
  * Cancel a worker task and await settlement so the rejection is not orphaned.
- * Always rejects with WorkerCancelledError (or rethrows unexpected errors).
+ * Rejects with WorkerCancelledError on cancel; rethrows unexpected errors as-is.
  */
 export async function cancelAndAwait<T>(
   cancel: () => void,
@@ -114,9 +114,7 @@ export async function cancelAndAwait<T>(
     await promise;
   } catch (e) {
     if (e instanceof WorkerCancelledError) throw e;
-    throw new WorkerCancelledError(
-      e instanceof Error ? e.message : 'Cancelled'
-    );
+    throw e;
   }
   throw new WorkerCancelledError();
 }

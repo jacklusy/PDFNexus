@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { deliverBatesOutputs } from './deliverBatesOutputs';
+import { applyBatesDeliverUi, deliverBatesOutputs } from './deliverBatesOutputs';
 
 describe('deliverBatesOutputs', () => {
   it('persists next only after a successful single download', async () => {
@@ -111,5 +111,32 @@ describe('deliverBatesOutputs', () => {
 
     expect(download).not.toHaveBeenCalled();
     expect(writeNext).not.toHaveBeenCalled();
+  });
+});
+
+describe('applyBatesDeliverUi', () => {
+  it('always advances start after deliver even if cancelled after download', () => {
+    const setStart = vi.fn();
+    const msg = applyBatesDeliverUi({
+      next: 88,
+      fileCount: 2,
+      cancelledAfterDownload: true,
+      setStart,
+    });
+    expect(setStart).toHaveBeenCalledWith(88);
+    expect(msg).toContain('88');
+    expect(msg).toMatch(/Downloaded;/);
+  });
+
+  it('reports file count when not cancelled after download', () => {
+    const setStart = vi.fn();
+    const msg = applyBatesDeliverUi({
+      next: 3,
+      fileCount: 2,
+      cancelledAfterDownload: false,
+      setStart,
+    });
+    expect(setStart).toHaveBeenCalledWith(3);
+    expect(msg).toContain('2 file');
   });
 });

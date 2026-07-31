@@ -101,7 +101,10 @@ export function PdfToExcelTool() {
     setLastAction('ocr');
     try {
       const bytes = await sourceFile.arrayBuffer();
-      if (ac.signal.aborted) return;
+      if (ac.signal.aborted) {
+        if (ocrGuardRef.current.isCurrent(gen)) setProgress(null);
+        return;
+      }
       const found = await detectTablesViaOcr({
         bytes,
         signal: ac.signal,
@@ -109,7 +112,10 @@ export function PdfToExcelTool() {
           if (ocrGuardRef.current.isCurrent(gen)) setProgress(msg);
         },
       });
-      if (!ocrGuardRef.current.isCurrent(gen) || ac.signal.aborted) return;
+      if (!ocrGuardRef.current.isCurrent(gen) || ac.signal.aborted) {
+        if (ocrGuardRef.current.isCurrent(gen)) setProgress(null);
+        return;
+      }
       setTables(found);
       setSelected(new Set(found.map((_, i) => i)));
       setProgress(
