@@ -9,7 +9,10 @@ import { ToolProgress } from '../ToolProgress';
 import { useTimedProgress } from '../useTimedProgress';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { parsePageRanges } from '../parsePageRanges';
-import { pdfToImages, type ImageExportFormat } from './pdfToImages';
+import { zipOutputs } from '../zipOutputs';
+import { runWorkerTask, WorkerCancelledError } from '../runInWorker';
+import { softLargePdfHint } from '../softLargePdfHint';
+import { type ImageExportFormat } from './pdfToImages';
 
 export function PdfToImagesTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
@@ -25,7 +28,9 @@ export function PdfToImagesTool() {
   const [progress, setProgress] = useState<string | null>(null);
   const [progressCurrent, setProgressCurrent] = useState(0);
   const [progressTotal, setProgressTotal] = useState(0);
-  const cancelledRef = useRef(false);
+  const [sizeHint, setSizeHint] = useState<string | null>(null);
+  const cancelRef = useRef<(() => void) | null>(null);
+  const cancelledBeforeWorkerRef = useRef(false);
   const { elapsedLabel } = useTimedProgress(busy);
 
   const file = files[0]?.file;
@@ -35,8 +40,10 @@ export function PdfToImagesTool() {
     (async () => {
       if (!file) {
         setPageCount(0);
+        setSizeHint(null);
         return;
       }
+      setSizeHint(softLargePdfHint(file.size));
       try {
         const buf = await file.arrayBuffer();
         const doc = await loadReadablePdf(buf);
@@ -47,7 +54,10 @@ export function PdfToImagesTool() {
           setError(null);
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not read PDF');
+        if (!cancelled) {
+          setPageCount(0);
+          setError(e instanceof Error ? e.message : 'Could not read PDF');
+        }
       }
     })();
     return () => {
@@ -57,10 +67,10 @@ export function PdfToImagesTool() {
 
   const run = async () => {
     if (!file || !pageCount) return;
-    cancelledRef.current = false;
+    cancelledBeforeWorkerRef.current = false;
     setBusy(true);
     setError(null);
-    setProgress('Rendering…');
+    setProgress('Reading…');
     setProgressCurrent(0);
     setProgressTotal(0);
     try {
@@ -69,8 +79,13 @@ export function PdfToImagesTool() {
         rejectOverlaps: true,
       });
       const bytes = await file.arrayBuffer();
+      // Cancel during arrayBuffer is a soft no-op until after the read (parity Split/Extract).
+      if (cancelledBeforeWorkerRef.current) {
+        throw new WorkerCancelledError();
+      }
       const baseName = file.name.replace(/\.pdf$/i, '') || 'page';
-      const result = await pdfToImages({
+      const request = {
+        id: 'pdf-to-images',
         bytes,
         pages,
         format,
@@ -79,34 +94,53 @@ export function PdfToImagesTool() {
         background,
         namePattern,
         baseName,
+      };
+      const { promise, cancel } = runWorkerTask<
+        typeof request,
+        {
+          files: Array<{ fileName: string; bytes: ArrayBuffer; mimeType: ImageExportFormat }>;
+        }
+      >({
+        workerUrl: new URL('./pdf-to-images.worker.ts', import.meta.url),
+        request,
+        transfer: [bytes],
         onProgress: (c, t) => {
-          if (cancelledRef.current) throw new Error('Cancelled');
           setProgressCurrent(c);
           setProgressTotal(t);
           setProgress(`Rendering ${c}/${t}…`);
         },
       });
-      if (cancelledRef.current) throw new Error('Cancelled');
-      if (result.zipBlob) {
-        downloadBlobLocally(result.zipBlob, `${baseName}-images.zip`);
-      } else if (result.files[0]) {
-        downloadBlobLocally(result.files[0].blob, result.files[0].fileName);
+      cancelRef.current = () => {
+        cancelledBeforeWorkerRef.current = true;
+        cancel();
+      };
+      const result = await promise;
+      const named = result.files.map((f) => ({
+        fileName: f.fileName,
+        blob: new Blob([f.bytes], { type: f.mimeType }),
+      }));
+      if (named.length > 1) {
+        setProgress('Building ZIP…');
+        const zip = await zipOutputs(named);
+        downloadBlobLocally(zip, `${baseName}-images.zip`);
+      } else if (named[0]) {
+        downloadBlobLocally(named[0].blob, named[0].fileName);
       }
-      setProgress(`Done — ${result.files.length} image(s)`);
+      setProgress(`Done — ${named.length} image(s)`);
       setProgressCurrent(0);
       setProgressTotal(0);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg === 'Cancelled') {
+      if (e instanceof WorkerCancelledError || (e instanceof Error && e.message === 'Cancelled')) {
         setProgress(null);
         setError(null);
       } else {
-        setError(msg);
+        setError(e instanceof Error ? e.message : String(e));
         setProgress(null);
       }
       setProgressCurrent(0);
       setProgressTotal(0);
     } finally {
+      cancelRef.current = null;
       setBusy(false);
     }
   };
@@ -114,14 +148,14 @@ export function PdfToImagesTool() {
   return (
     <ToolWorkbench
       title="PDF to images"
-      description="Export pages as JPG, PNG, or WebP. Multi-page results download as a ZIP."
+      description="Export pages as JPG, PNG, or WebP. Multi-page results download as a ZIP. Rendering runs in a background worker."
       files={files}
       onFilesChange={setFiles}
       busy={busy}
       footer={
         <Button
           variant="primary"
-          disabled={!file || busy}
+          disabled={!file || busy || pageCount === 0}
           loading={busy}
           onClick={() => void run()}
         >
@@ -129,6 +163,11 @@ export function PdfToImagesTool() {
         </Button>
       }
     >
+      {sizeHint ? (
+        <p className="text-sm text-[var(--color-muted)]" role="note">
+          {sizeHint}
+        </p>
+      ) : null}
       {pageCount > 0 ? (
         <>
           <label className="block text-sm">
@@ -224,7 +263,8 @@ export function PdfToImagesTool() {
           totalPages={progressTotal > 0 ? progressTotal : undefined}
           elapsedLabel={elapsedLabel}
           onCancel={() => {
-            cancelledRef.current = true;
+            cancelledBeforeWorkerRef.current = true;
+            cancelRef.current?.();
           }}
         />
       ) : progress && !busy ? (

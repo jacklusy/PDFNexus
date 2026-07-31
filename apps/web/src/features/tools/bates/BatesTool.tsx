@@ -18,6 +18,7 @@ import {
   type BatesAlign,
   type BatesPosition,
 } from './batesPdf';
+import { deliverBatesOutputs } from './deliverBatesOutputs';
 
 function readStoredNext(): number {
   try {
@@ -87,6 +88,7 @@ export function BatesTool() {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : 'Could not read PDF');
           setErrorFileName(firstFile.name);
+          setPageCount(0);
         }
       }
     })();
@@ -153,15 +155,14 @@ export function BatesTool() {
         });
       }
 
-      writeStoredNext(next);
+      await deliverBatesOutputs({
+        outputs,
+        next,
+        writeNext: writeStoredNext,
+        download: downloadBlobLocally,
+        zipOutputs,
+      });
       setStart(next);
-
-      if (outputs.length === 1) {
-        downloadBlobLocally(outputs[0].blob, outputs[0].fileName);
-      } else {
-        const zip = await zipOutputs(outputs);
-        downloadBlobLocally(zip, 'bates-numbered.zip');
-      }
       setProgress(
         `Downloaded ${outputs.length} file(s). Next number saved as ${next} for continuity.`
       );
@@ -206,7 +207,7 @@ export function BatesTool() {
       footer={
         <Button
           variant="primary"
-          disabled={!files.length || busy}
+          disabled={!files.length || busy || pageCount === 0}
           loading={busy}
           onClick={() => void run()}
         >

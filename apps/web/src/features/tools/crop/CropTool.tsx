@@ -6,6 +6,9 @@ import { downloadBlobLocally } from '@/features/files/localDownload';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { ToolWorkbench } from '../ToolWorkbench';
 import { ToolError } from '../ToolError';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
+import { softLargePdfHint } from '../softLargePdfHint';
 import { useToolHandoff } from '../useToolHandoff';
 import { parsePageRanges, PageRangeError } from '../parsePageRanges';
 import { PagePreviewCanvas } from '../PagePreviewCanvas';
@@ -42,8 +45,11 @@ export function CropTool() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const cancelledRef = useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
 
   const file = files[0]?.file;
+  const sizeHint = file ? softLargePdfHint(file.size) : null;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -144,16 +150,25 @@ export function CropTool() {
 
   const run = async () => {
     if (!file || !pdfBytes) return;
+    cancelledRef.current = false;
     setBusy(true);
     setError(null);
     setProgress('Cropping…');
     try {
       const pages = resolveTargetPages();
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
       const bytes = await cropPdf({
         bytes: pdfBytes,
         pages,
         margins,
       });
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
       const name = file.name.replace(/\.pdf$/i, '') + '-cropped.pdf';
       downloadBlobLocally(new Blob([bytes], { type: 'application/pdf' }), name);
       setProgress('Downloaded');
@@ -306,7 +321,22 @@ export function CropTool() {
         </>
       ) : null}
 
-      {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
+      {sizeHint ? (
+        <p className="text-sm text-[var(--color-muted)]" role="note">
+          {sizeHint}
+        </p>
+      ) : null}
+      {busy && progress ? (
+        <ToolProgress
+          stage={progress}
+          elapsedLabel={elapsedLabel}
+          onCancel={() => {
+            cancelledRef.current = true;
+          }}
+        />
+      ) : progress && !busy ? (
+        <p className="text-sm text-[var(--color-muted)]">{progress}</p>
+      ) : null}
       {error ? (
         <ToolError message={error} fileName={file?.name} onRetry={() => { setError(null); void run(); }} />
       ) : null}

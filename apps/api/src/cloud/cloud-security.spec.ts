@@ -5,7 +5,7 @@ import {
   isEncryptedPayload,
 } from './token-crypto';
 import { oauthCallbackSessionMatches } from './oauth-callback-guard';
-import { isPdfUpload, isCloudPdfMeta, isCloudTokenConnected, isPdfMagic, isUnderOneDriveApproot, dropboxAppFolderUploadPath, readCloudBodyCapped, MAX_CLOUD_FILE_BYTES } from './cloud-constants';
+import { isPdfUpload, isCloudPdfMeta, isCloudTokenConnected, isPdfMagic, isUnderOneDriveApproot, dropboxAppFolderUploadPath, cloudAppFolderBasename, readCloudBodyCapped, MAX_CLOUD_FILE_BYTES } from './cloud-constants';
 import {
   deserializeCloudTokenRecord,
   serializeCloudTokenRecord,
@@ -54,6 +54,9 @@ describe('cloud PDF + size gates', () => {
     expect(isPdfUpload({ mimetype: 'application/pdf', originalname: 'a.bin' })).toBe(
       true,
     );
+    expect(isPdfUpload({ mimetype: 'application/x-pdf', originalname: 'a.bin' })).toBe(
+      true,
+    );
     expect(isPdfUpload({ mimetype: 'text/plain', originalname: 'a.pdf' })).toBe(true);
     expect(
       isPdfUpload({ mimetype: 'application/octet-stream', originalname: 'a.pdf' }),
@@ -62,6 +65,13 @@ describe('cloud PDF + size gates', () => {
       isPdfUpload({ mimetype: 'application/octet-stream', originalname: 'a.bin' }),
     ).toBe(false);
     expect(isPdfUpload({ mimetype: 'image/png', originalname: 'a.png' })).toBe(false);
+  });
+
+  it('cloudAppFolderBasename strips path segments and forces .pdf', () => {
+    expect(cloudAppFolderBasename('../evil.pdf')).toBe('evil.pdf');
+    expect(cloudAppFolderBasename('a/b/c.pdf')).toBe('c.pdf');
+    expect(cloudAppFolderBasename('notes')).toBe('notes.pdf');
+    expect(cloudAppFolderBasename('weird name!!.PDF')).toBe('weird name_.PDF');
   });
 
   it('rejects non-PDF import metadata', () => {

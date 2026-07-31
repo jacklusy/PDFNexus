@@ -5,8 +5,11 @@ import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { ToolError } from '../ToolError';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { zipOutputs } from '../zipOutputs';
+import { softLargePdfHint } from '../softLargePdfHint';
 import { planSplitRanges, type SplitMode } from './splitPdf';
 import { runWorkerTask, WorkerCancelledError } from '../runInWorker';
 
@@ -24,8 +27,13 @@ export function SplitTool() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const [progressCurrent, setProgressCurrent] = useState(0);
+  const [progressTotal, setProgressTotal] = useState(0);
+  const [sizeHint, setSizeHint] = useState<string | null>(null);
   const [names, setNames] = useState<Record<number, string>>({});
   const cancelRef = React.useRef<(() => void) | null>(null);
+  const cancelledBeforeWorkerRef = React.useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
 
   const file = files[0]?.file;
 
@@ -34,8 +42,10 @@ export function SplitTool() {
     (async () => {
       if (!file) {
         setPageCount(0);
+        setSizeHint(null);
         return;
       }
+      setSizeHint(softLargePdfHint(file.size));
       try {
         const buf = await file.arrayBuffer();
         const doc = await loadReadablePdf(buf);
@@ -80,11 +90,17 @@ export function SplitTool() {
 
   const run = async () => {
     if (!file || !pageCount) return;
+    cancelledBeforeWorkerRef.current = false;
     setBusy(true);
     setError(null);
-    setProgress('Preparing…');
+    setProgress('Reading…');
+    setProgressCurrent(0);
+    setProgressTotal(0);
     try {
       const bytes = await file.arrayBuffer();
+      if (cancelledBeforeWorkerRef.current) {
+        throw new WorkerCancelledError();
+      }
       const request = {
         bytes,
         mode,
@@ -109,9 +125,16 @@ export function SplitTool() {
         workerUrl: new URL('./split.worker.ts', import.meta.url),
         request: { id: 'split', request },
         transfer: [bytes],
-        onProgress: (c, t) => setProgress(`Splitting ${c}/${t}…`),
+        onProgress: (c, t) => {
+          setProgressCurrent(c);
+          setProgressTotal(t);
+          setProgress(`Splitting ${c}/${t}…`);
+        },
       });
-      cancelRef.current = cancel;
+      cancelRef.current = () => {
+        cancelledBeforeWorkerRef.current = true;
+        cancel();
+      };
       const result = await promise;
       const named = result.parts.map((p, i) => ({
         fileName: plan[i]?.fileName || p.fileName || `part-${i + 1}.pdf`,
@@ -126,6 +149,8 @@ export function SplitTool() {
         downloadBlobLocally(zip, `${baseName(file.name)}-split.zip`);
       }
       setProgress(`Done — ${named.length} file${named.length === 1 ? '' : 's'}`);
+      setProgressCurrent(0);
+      setProgressTotal(0);
     } catch (e) {
       if (e instanceof WorkerCancelledError) {
         setProgress(null);
@@ -133,6 +158,8 @@ export function SplitTool() {
         setError(e instanceof Error ? e.message : String(e));
         setProgress(null);
       }
+      setProgressCurrent(0);
+      setProgressTotal(0);
     } finally {
       cancelRef.current = null;
       setBusy(false);
@@ -147,30 +174,21 @@ export function SplitTool() {
       onFilesChange={setFiles}
       busy={busy}
       footer={
-        <>
-          <Button
-            variant="primary"
-            disabled={!file || busy || planned.length === 0}
-            loading={busy}
-            onClick={() => void run()}
-          >
-            Split & download
-          </Button>
-          {busy ? (
-            <Button
-              variant="outline"
-              onClick={() => {
-                cancelRef.current?.();
-                setBusy(false);
-                setProgress(null);
-              }}
-            >
-              Cancel
-            </Button>
-          ) : null}
-        </>
+        <Button
+          variant="primary"
+          disabled={!file || busy || planned.length === 0}
+          loading={busy}
+          onClick={() => void run()}
+        >
+          Split & download
+        </Button>
       }
     >
+      {sizeHint ? (
+        <p className="text-sm text-[var(--color-muted)]" role="note">
+          {sizeHint}
+        </p>
+      ) : null}
       {pageCount > 0 ? (
         <>
           <fieldset className="space-y-2">
@@ -283,7 +301,25 @@ export function SplitTool() {
         </>
       ) : null}
 
-      {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
+      {busy && progress ? (
+        <ToolProgress
+          stage={progress}
+          percent={
+            progressTotal > 0
+              ? Math.round((progressCurrent / progressTotal) * 100)
+              : null
+          }
+          currentPage={progressTotal > 0 ? progressCurrent : undefined}
+          totalPages={progressTotal > 0 ? progressTotal : undefined}
+          elapsedLabel={elapsedLabel}
+          onCancel={() => {
+            cancelledBeforeWorkerRef.current = true;
+            cancelRef.current?.();
+          }}
+        />
+      ) : progress && !busy ? (
+        <p className="text-sm text-[var(--color-muted)]">{progress}</p>
+      ) : null}
       {error ? (
         <ToolError message={error} fileName={file?.name} onRetry={() => { setError(null); void run(); }} />
       ) : null}

@@ -5,6 +5,9 @@ import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { ToolError } from '../ToolError';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
+import { softLargePdfHint } from '../softLargePdfHint';
 import { clearPassword, getPdfToolkit } from '../protect/pdfToolkit';
 import { sanitizeToolkitError } from '../assertPdfReadable';
 
@@ -15,8 +18,11 @@ export function UnlockTool() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const cancelledRef = React.useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
 
   const file = files[0]?.file;
+  const sizeHint = file ? softLargePdfHint(file.size) : null;
 
   const run = async () => {
     if (!file) return;
@@ -24,17 +30,31 @@ export function UnlockTool() {
       setError('Enter the PDF password.');
       return;
     }
+    cancelledRef.current = false;
     setBusy(true);
     setError(null);
     setProgress('Loading decryption engine…');
     let pwd = password;
     try {
       const toolkit = await getPdfToolkit();
-      setProgress('Unlocking…');
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
+      setProgress('Reading…');
       const bytes = await file.arrayBuffer();
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
+      setProgress('Unlocking…');
       const unlocked = await toolkit.unlock(new Uint8Array(bytes), {
         password: pwd,
       });
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
       const name = file.name.replace(/\.pdf$/i, '') + '-unlocked.pdf';
       downloadBlobLocally(
         new Blob([unlocked], { type: 'application/pdf' }),
@@ -72,7 +92,7 @@ export function UnlockTool() {
       footer={
         <Button
           variant="primary"
-          disabled={!file || busy}
+          disabled={!file || busy || !password}
           loading={busy}
           onClick={() => void run()}
         >
@@ -80,6 +100,11 @@ export function UnlockTool() {
         </Button>
       }
     >
+      {sizeHint ? (
+        <p className="text-sm text-[var(--color-muted)]" role="note">
+          {sizeHint}
+        </p>
+      ) : null}
       <label className="block text-sm">
         <span className="font-medium">Current password</span>
         <input
@@ -104,7 +129,17 @@ export function UnlockTool() {
         This tool only decrypts with a password you provide. It will not attempt to guess or
         bypass protection.
       </p>
-      {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
+      {busy && progress ? (
+        <ToolProgress
+          stage={progress}
+          elapsedLabel={elapsedLabel}
+          onCancel={() => {
+            cancelledRef.current = true;
+          }}
+        />
+      ) : progress && !busy ? (
+        <p className="text-sm text-[var(--color-muted)]">{progress}</p>
+      ) : null}
       {error ? (
         <ToolError
           message={error}

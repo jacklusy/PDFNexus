@@ -7,6 +7,9 @@ import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { parsePageRanges, PageRangeError } from '../parsePageRanges';
 import { ToolError } from '../ToolError';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
+import { softLargePdfHint } from '../softLargePdfHint';
 import { runWorkerTask, WorkerCancelledError } from '../runInWorker';
 
 export function ExtractTool() {
@@ -17,7 +20,12 @@ export function ExtractTool() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const [progressCurrent, setProgressCurrent] = useState(0);
+  const [progressTotal, setProgressTotal] = useState(0);
+  const [sizeHint, setSizeHint] = useState<string | null>(null);
   const cancelRef = React.useRef<(() => void) | null>(null);
+  const cancelledBeforeWorkerRef = React.useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
 
   const file = files[0]?.file;
 
@@ -27,8 +35,10 @@ export function ExtractTool() {
       if (!file) {
         setPageCount(0);
         setSelected([]);
+        setSizeHint(null);
         return;
       }
+      setSizeHint(softLargePdfHint(file.size));
       try {
         const buf = await file.arrayBuffer();
         const doc = await loadReadablePdf(buf);
@@ -40,7 +50,10 @@ export function ExtractTool() {
           setError(null);
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not read PDF');
+        if (!cancelled) {
+          setPageCount(0);
+          setError(e instanceof Error ? e.message : 'Could not read PDF');
+        }
       }
     })();
     return () => {
@@ -78,11 +91,17 @@ export function ExtractTool() {
 
   const run = async () => {
     if (!file || selected.length === 0) return;
+    cancelledBeforeWorkerRef.current = false;
     setBusy(true);
     setError(null);
-    setProgress('Extracting…');
+    setProgress('Reading…');
+    setProgressCurrent(0);
+    setProgressTotal(0);
     try {
       const bytes = await file.arrayBuffer();
+      if (cancelledBeforeWorkerRef.current) {
+        throw new WorkerCancelledError();
+      }
       const request = { bytes, pages: selected };
       const { promise, cancel } = runWorkerTask<
         { id: string; request: typeof request },
@@ -91,9 +110,16 @@ export function ExtractTool() {
         workerUrl: new URL('../split/extract.worker.ts', import.meta.url),
         request: { id: 'extract', request },
         transfer: [bytes],
-        onProgress: (c, t) => setProgress(`Extracting ${c}/${t}…`),
+        onProgress: (c, t) => {
+          setProgressCurrent(c);
+          setProgressTotal(t);
+          setProgress(`Extracting ${c}/${t}…`);
+        },
       });
-      cancelRef.current = cancel;
+      cancelRef.current = () => {
+        cancelledBeforeWorkerRef.current = true;
+        cancel();
+      };
       const result = await promise;
       const outName = file.name.replace(/\.pdf$/i, '') + '-extract.pdf';
       downloadBlobLocally(
@@ -101,13 +127,17 @@ export function ExtractTool() {
         outName
       );
       setProgress(`Done — ${result.pageCount} page${result.pageCount === 1 ? '' : 's'}`);
+      setProgressCurrent(0);
+      setProgressTotal(0);
     } catch (e) {
       if (e instanceof WorkerCancelledError) {
-        setProgress('Cancelled');
+        setProgress(null);
       } else {
         setError(e instanceof Error ? e.message : String(e));
         setProgress(null);
       }
+      setProgressCurrent(0);
+      setProgressTotal(0);
     } finally {
       cancelRef.current = null;
       setBusy(false);
@@ -122,26 +152,21 @@ export function ExtractTool() {
       onFilesChange={setFiles}
       busy={busy}
       footer={
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="primary"
-            disabled={!file || busy || selected.length === 0}
-            loading={busy}
-            onClick={() => void run()}
-          >
-            Extract & download
-          </Button>
-          {busy ? (
-            <Button
-              variant="secondary"
-              onClick={() => cancelRef.current?.()}
-            >
-              Cancel
-            </Button>
-          ) : null}
-        </div>
+        <Button
+          variant="primary"
+          disabled={!file || busy || selected.length === 0}
+          loading={busy}
+          onClick={() => void run()}
+        >
+          Extract & download
+        </Button>
       }
     >
+      {sizeHint ? (
+        <p className="text-sm text-[var(--color-muted)]" role="note">
+          {sizeHint}
+        </p>
+      ) : null}
       {pageCount > 0 ? (
         <>
           <div className="flex flex-wrap gap-2">
@@ -266,7 +291,25 @@ export function ExtractTool() {
         </>
       ) : null}
 
-      {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
+      {busy && progress ? (
+        <ToolProgress
+          stage={progress}
+          percent={
+            progressTotal > 0
+              ? Math.round((progressCurrent / progressTotal) * 100)
+              : null
+          }
+          currentPage={progressTotal > 0 ? progressCurrent : undefined}
+          totalPages={progressTotal > 0 ? progressTotal : undefined}
+          elapsedLabel={elapsedLabel}
+          onCancel={() => {
+            cancelledBeforeWorkerRef.current = true;
+            cancelRef.current?.();
+          }}
+        />
+      ) : progress && !busy ? (
+        <p className="text-sm text-[var(--color-muted)]">{progress}</p>
+      ) : null}
       {error ? (
         <ToolError message={error} fileName={file?.name} onRetry={() => { setError(null); void run(); }} />
       ) : null}

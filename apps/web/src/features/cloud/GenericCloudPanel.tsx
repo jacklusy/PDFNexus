@@ -37,6 +37,13 @@ export function GenericCloudPanel({
   >([]);
   const [consent, setConsent] = useState(false);
   const [exportResult, setExportResult] = useState<string | null>(null);
+  const [lastAction, setLastAction] = useState<
+    | { kind: 'connect' }
+    | { kind: 'list' }
+    | { kind: 'import'; fileId: string; name: string }
+    | { kind: 'export' }
+    | null
+  >(null);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -46,6 +53,7 @@ export function GenericCloudPanel({
     } catch (e) {
       if (e instanceof ApiError && e.status === 503) {
         setError(e.message);
+        setLastAction({ kind: 'connect' });
       }
       setConnected(false);
       return false;
@@ -58,8 +66,10 @@ export function GenericCloudPanel({
         `${base}/files`
       );
       setFiles(data.files ?? []);
-    } catch {
+    } catch (e) {
       setFiles([]);
+      setError(e instanceof ApiError ? e.message : String(e));
+      setLastAction({ kind: 'list' });
     }
   }, [base]);
 
@@ -73,6 +83,7 @@ export function GenericCloudPanel({
   const connect = async () => {
     setBusy(true);
     setError(null);
+    setLastAction({ kind: 'connect' });
     try {
       const { url } = await apiFetch<{ url: string }>(`${base}/auth-url`);
       window.location.href = url;
@@ -91,6 +102,7 @@ export function GenericCloudPanel({
       setConsent(false);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
+      setLastAction({ kind: 'connect' });
     } finally {
       setBusy(false);
     }
@@ -100,6 +112,7 @@ export function GenericCloudPanel({
     if (!onImport) return;
     setBusy(true);
     setError(null);
+    setLastAction({ kind: 'import', fileId, name });
     try {
       const blob = await apiFetch<Blob>(`${base}/import`, {
         method: 'POST',
@@ -123,6 +136,7 @@ export function GenericCloudPanel({
     if (!exportFile || !canUseCloudExport(consent)) return;
     setBusy(true);
     setError(null);
+    setLastAction({ kind: 'export' });
     try {
       const form = new FormData();
       form.append('file', exportFile, exportFile.name);
@@ -137,6 +151,15 @@ export function GenericCloudPanel({
     } finally {
       setBusy(false);
     }
+  };
+
+  const retryLast = () => {
+    setError(null);
+    if (!lastAction) return;
+    if (lastAction.kind === 'connect') void connect();
+    else if (lastAction.kind === 'list') void loadFiles();
+    else if (lastAction.kind === 'import') void importFile(lastAction.fileId, lastAction.name);
+    else if (lastAction.kind === 'export') void exportToCloud();
   };
 
   return (
@@ -245,6 +268,7 @@ export function GenericCloudPanel({
           message={error}
           originalSafe
           cloudNote="Cloud import/export is optional. Your local originals stay on this device."
+          onRetry={lastAction ? () => retryLast() : undefined}
         />
       ) : null}
     </div>

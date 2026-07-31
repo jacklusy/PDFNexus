@@ -9,6 +9,7 @@ import { useToolHandoff } from '../useToolHandoff';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { detectTables, type DetectedTable } from './detectTables';
 import { canRunOcrTableDetect, detectTablesViaOcr } from './ocrTables';
+import { createGenerationGuard } from './ocrGenerationGuard';
 import { pdfToExcel } from './pdfToExcel';
 import { ToolError } from '../ToolError';
 
@@ -22,10 +23,14 @@ export function PdfToExcelTool() {
   const [progress, setProgress] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<'detect' | 'ocr' | 'export'>('detect');
   const [detectKey, setDetectKey] = useState(0);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const ocrGuardRef = React.useRef(createGenerationGuard());
 
   const file = files[0]?.file;
 
   useEffect(() => {
+    // Invalidate any in-flight OCR when the source file changes.
+    ocrGuardRef.current.bump();
     let cancelled = false;
     (async () => {
       if (!file) {
@@ -74,15 +79,21 @@ export function PdfToExcelTool() {
 
   const runOcrDetect = async () => {
     if (!canRunOcrTableDetect(ocrConsent, Boolean(file)) || !file) return;
+    const gen = ocrGuardRef.current.bump();
+    const sourceFile = file;
     setBusy(true);
+    setOcrBusy(true);
     setError(null);
     setLastAction('ocr');
     try {
-      const bytes = await file.arrayBuffer();
+      const bytes = await sourceFile.arrayBuffer();
       const found = await detectTablesViaOcr({
         bytes,
-        onProgress: setProgress,
+        onProgress: (msg) => {
+          if (ocrGuardRef.current.isCurrent(gen)) setProgress(msg);
+        },
       });
+      if (!ocrGuardRef.current.isCurrent(gen)) return;
       setTables(found);
       setSelected(new Set(found.map((_, i) => i)));
       setProgress(
@@ -91,10 +102,14 @@ export function PdfToExcelTool() {
           : 'OCR returned no tables'
       );
     } catch (e) {
+      if (!ocrGuardRef.current.isCurrent(gen)) return;
       setError(e instanceof Error ? e.message : String(e));
       setProgress(null);
     } finally {
-      setBusy(false);
+      if (ocrGuardRef.current.isCurrent(gen)) {
+        setBusy(false);
+        setOcrBusy(false);
+      }
     }
   };
 
@@ -140,7 +155,7 @@ export function PdfToExcelTool() {
         setProgress(null);
       }}
       busy={busy}
-      processingMode={ocrConsent ? 'cloud_assisted' : 'partial'}
+      processingMode={ocrBusy ? 'cloud_assisted' : 'partial'}
       footer={
         <Button
           variant="primary"

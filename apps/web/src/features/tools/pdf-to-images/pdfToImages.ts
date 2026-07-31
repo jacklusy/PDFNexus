@@ -1,5 +1,7 @@
 /**
- * Export PDF pages as images (JPG / PNG / WebP) + optional ZIP.
+ * Export PDF pages as images (JPG / PNG / WebP).
+ * Canvas rendering works on the main thread (HTMLCanvasElement) or in a
+ * module worker (OffscreenCanvas). ZIP stays on the main thread.
  */
 
 import { ensurePdfWorker } from '@/lib/pdf/pdfHelpers';
@@ -19,6 +21,16 @@ export interface PdfToImagesOptions {
   onProgress?: (current: number, total: number) => void;
 }
 
+export interface PdfToImagesPageBuffer {
+  fileName: string;
+  bytes: ArrayBuffer;
+  mimeType: ImageExportFormat;
+}
+
+export interface PdfToImagesBuffersResult {
+  files: PdfToImagesPageBuffer[];
+}
+
 export interface PdfToImagesResult {
   files: Array<{ fileName: string; blob: Blob }>;
   zipBlob?: Blob;
@@ -30,9 +42,66 @@ function extFor(format: ImageExportFormat): string {
   return 'jpg';
 }
 
-export async function pdfToImages(
+function pageFileName(
+  namePattern: string,
+  baseName: string,
+  pageNum: number,
+  format: ImageExportFormat
+): string {
+  const name = namePattern
+    .replace(/\{n\}/g, String(pageNum))
+    .replace(/\{name\}/g, baseName);
+  return name.includes('.') ? name : `${name}.${extFor(format)}`;
+}
+
+async function canvasToArrayBuffer(
+  canvas: HTMLCanvasElement | OffscreenCanvas,
+  format: ImageExportFormat,
+  quality: number
+): Promise<ArrayBuffer> {
+  if (typeof OffscreenCanvas !== 'undefined' && canvas instanceof OffscreenCanvas) {
+    const blob = await canvas.convertToBlob({
+      type: format,
+      quality,
+    });
+    return blob.arrayBuffer();
+  }
+  const htmlCanvas = canvas as HTMLCanvasElement;
+  const blob: Blob = await new Promise((resolve, reject) => {
+    htmlCanvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('Encode failed'))),
+      format,
+      quality
+    );
+  });
+  return blob.arrayBuffer();
+}
+
+function createRenderCanvas(
+  width: number,
+  height: number
+): HTMLCanvasElement | OffscreenCanvas {
+  if (typeof OffscreenCanvas !== 'undefined' && typeof document === 'undefined') {
+    return new OffscreenCanvas(width, height);
+  }
+  if (typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
+  }
+  if (typeof OffscreenCanvas !== 'undefined') {
+    return new OffscreenCanvas(width, height);
+  }
+  throw new Error('Canvas unavailable');
+}
+
+/**
+ * Render selected pages to image ArrayBuffers (no ZIP). Safe for workers.
+ */
+export async function pdfToImageBuffers(
   options: PdfToImagesOptions
-): Promise<PdfToImagesResult> {
+): Promise<PdfToImagesBuffersResult> {
   const pdfjs = await import('pdfjs-dist');
   ensurePdfWorker(pdfjs);
   const task = pdfjs.getDocument({
@@ -40,7 +109,7 @@ export async function pdfToImages(
     isEvalSupported: false,
   });
   const doc = await task.promise;
-  const files: Array<{ fileName: string; blob: Blob }> = [];
+  const files: PdfToImagesPageBuffer[] = [];
 
   try {
     for (let i = 0; i < options.pages.length; i++) {
@@ -48,40 +117,80 @@ export async function pdfToImages(
       options.onProgress?.(i, options.pages.length);
       const page = await doc.getPage(pageNum);
       const viewport = page.getViewport({ scale: options.scale });
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.floor(viewport.width));
-      canvas.height = Math.max(1, Math.floor(viewport.height));
-      const ctx = canvas.getContext('2d');
+      const width = Math.max(1, Math.floor(viewport.width));
+      const height = Math.max(1, Math.floor(viewport.height));
+      const canvas = createRenderCanvas(width, height);
+      const ctx = canvas.getContext('2d') as
+        | CanvasRenderingContext2D
+        | OffscreenCanvasRenderingContext2D
+        | null;
       if (!ctx) throw new Error('Canvas unavailable');
       ctx.fillStyle = options.background;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-      const blob: Blob = await new Promise((resolve, reject) => {
-        canvas.toBlob(
-          (b) => (b ? resolve(b) : reject(new Error('Encode failed'))),
-          options.format,
-          options.quality
-        );
+      ctx.fillRect(0, 0, width, height);
+      // pdf.js accepts both HTMLCanvasElement and OffscreenCanvas contexts.
+      await page.render({
+        canvasContext: ctx as CanvasRenderingContext2D,
+        viewport,
+        canvas: canvas as HTMLCanvasElement,
+      }).promise;
+      const bytes = await canvasToArrayBuffer(
+        canvas,
+        options.format,
+        options.quality
+      );
+      if ('width' in canvas) {
+        (canvas as HTMLCanvasElement | OffscreenCanvas).width = 0;
+        (canvas as HTMLCanvasElement | OffscreenCanvas).height = 0;
+      }
+      files.push({
+        fileName: pageFileName(
+          options.namePattern,
+          options.baseName,
+          pageNum,
+          options.format
+        ),
+        bytes,
+        mimeType: options.format,
       });
-      // Release canvas backing store before next page
-      canvas.width = 0;
-      canvas.height = 0;
-      const name = options.namePattern
-        .replace(/\{n\}/g, String(pageNum))
-        .replace(/\{name\}/g, options.baseName);
-      const fileName = name.includes('.')
-        ? name
-        : `${name}.${extFor(options.format)}`;
-      files.push({ fileName, blob });
     }
     options.onProgress?.(options.pages.length, options.pages.length);
   } finally {
     await doc.destroy();
   }
 
+  return { files };
+}
+
+export async function pdfToImages(
+  options: PdfToImagesOptions
+): Promise<PdfToImagesResult> {
+  const buffers = await pdfToImageBuffers(options);
+  const files = buffers.files.map((f) => ({
+    fileName: f.fileName,
+    blob: new Blob([f.bytes], { type: f.mimeType }),
+  }));
   let zipBlob: Blob | undefined;
   if (files.length > 1) {
     zipBlob = await zipOutputs(files);
   }
   return { files, zipBlob };
+}
+
+export function pdfToImagesWorkerOkMessage(
+  id: string,
+  files: PdfToImagesPageBuffer[]
+) {
+  return {
+    id,
+    ok: true as const,
+    result: { files },
+  };
+}
+
+export function pdfToImagesWorkerErrMessage(id: string, err: unknown) {
+  return {
+    id,
+    ok: false as const,
+    error: err instanceof Error ? err.message : String(err),
+  };
 }

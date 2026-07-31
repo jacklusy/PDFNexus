@@ -2,12 +2,16 @@
 
 import React, { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
+
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { DriveExportButton } from '@/features/cloud/DriveExportButton';
 import { ToolWorkbench } from '../ToolWorkbench';
 import { ToolError } from '../ToolError';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
 import { useToolHandoff } from '../useToolHandoff';
+import { softLargePdfHint } from '../softLargePdfHint';
 import { FLATTEN_WARNING, flattenPdf, shouldRefuseFlattenDownload } from './flattenPdf';
 
 export function FlattenTool() {
@@ -18,17 +22,30 @@ export function FlattenTool() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [lastPdf, setLastPdf] = useState<File | null>(null);
+  const cancelledRef = React.useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
 
   const file = files[0]?.file;
+  const sizeHint = file ? softLargePdfHint(file.size) : null;
 
   const run = async () => {
     if (!file || !understood) return;
+    cancelledRef.current = false;
     setBusy(true);
     setError(null);
-    setProgress('Flattening forms and annotations…');
+    setProgress('Reading…');
     try {
       const bytes = await file.arrayBuffer();
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
+      setProgress('Flattening forms and annotations…');
       const result = await flattenPdf(bytes);
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
       const annotationFailed =
         Boolean(result.annotationError) && !result.annotationsFlattened;
 
@@ -125,7 +142,22 @@ export function FlattenTool() {
         </span>
       </label>
 
-      {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
+      {sizeHint ? (
+        <p className="text-sm text-[var(--color-muted)]" role="note">
+          {sizeHint}
+        </p>
+      ) : null}
+      {busy && progress ? (
+        <ToolProgress
+          stage={progress}
+          elapsedLabel={elapsedLabel}
+          onCancel={() => {
+            cancelledRef.current = true;
+          }}
+        />
+      ) : progress && !busy ? (
+        <p className="text-sm text-[var(--color-muted)]">{progress}</p>
+      ) : null}
       {error ? (
         <ToolError message={error} fileName={file?.name} onRetry={() => { setError(null); void run(); }} />
       ) : null}

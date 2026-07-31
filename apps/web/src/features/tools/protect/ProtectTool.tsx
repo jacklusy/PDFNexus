@@ -7,6 +7,9 @@ import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { clearPassword, getPdfToolkit, passwordStrength } from './pdfToolkit';
 import { sanitizeToolkitError } from '../assertPdfReadable';
 import { ToolError } from '../ToolError';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
+import { softLargePdfHint } from '../softLargePdfHint';
 
 export function ProtectTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
@@ -20,9 +23,14 @@ export function ProtectTool() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const cancelledRef = React.useRef(false);
+  const { elapsedLabel } = useTimedProgress(busy);
 
   const strength = passwordStrength(userPassword);
   const file = files[0]?.file;
+  const sizeHint = file ? softLargePdfHint(file.size) : null;
+  const canProtect =
+    Boolean(file) && Boolean(userPassword) && userPassword === confirm;
 
   const run = async () => {
     if (!file) return;
@@ -34,6 +42,7 @@ export function ProtectTool() {
       setError('Passwords do not match.');
       return;
     }
+    cancelledRef.current = false;
     setBusy(true);
     setError(null);
     setProgress('Loading encryption engine…');
@@ -42,8 +51,17 @@ export function ProtectTool() {
     let succeeded = false;
     try {
       const toolkit = await getPdfToolkit();
-      setProgress('Encrypting…');
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
+      setProgress('Reading…');
       const bytes = await file.arrayBuffer();
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
+      setProgress('Encrypting…');
       const locked = await toolkit.lock(new Uint8Array(bytes), {
         userPassword: user,
         ownerPassword: owner,
@@ -54,6 +72,10 @@ export function ProtectTool() {
           extract: allowExtract,
         },
       });
+      if (cancelledRef.current) {
+        setProgress(null);
+        return;
+      }
       const name = file.name.replace(/\.pdf$/i, '') + '-protected.pdf';
       downloadBlobLocally(
         new Blob([locked], { type: 'application/pdf' }),
@@ -88,7 +110,7 @@ export function ProtectTool() {
       footer={
         <Button
           variant="primary"
-          disabled={!file || busy}
+          disabled={!canProtect || busy}
           loading={busy}
           onClick={() => void run()}
         >
@@ -96,6 +118,11 @@ export function ProtectTool() {
         </Button>
       }
     >
+      {sizeHint ? (
+        <p className="text-sm text-[var(--color-muted)]" role="note">
+          {sizeHint}
+        </p>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm sm:col-span-2">
           <span className="font-medium">User password (required to open)</span>
@@ -181,7 +208,17 @@ export function ProtectTool() {
         </p>
       </fieldset>
 
-      {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
+      {busy && progress ? (
+        <ToolProgress
+          stage={progress}
+          elapsedLabel={elapsedLabel}
+          onCancel={() => {
+            cancelledRef.current = true;
+          }}
+        />
+      ) : progress && !busy ? (
+        <p className="text-sm text-[var(--color-muted)]">{progress}</p>
+      ) : null}
       {error ? (
         <ToolError
           message={

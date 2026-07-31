@@ -35,7 +35,8 @@ export function isCloudPdfMeta(meta: {
 }
 
 /**
- * PDF magic: `%PDF-` within the first 1024 bytes (ISO 32000).
+ * PDF magic: `%PDF-` searched within the first 1024 bytes of the buffer
+ * (ISO 32000 allows leading junk before the header).
  */
 export function isPdfMagic(buf: Buffer | Uint8Array): boolean {
   if (!buf || buf.length < 5) return false;

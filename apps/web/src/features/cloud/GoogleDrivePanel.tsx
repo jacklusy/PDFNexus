@@ -37,6 +37,14 @@ export function GoogleDrivePanel({
   const [consent, setConsent] = useState(false);
   const [exportResult, setExportResult] = useState<string | null>(null);
   const [pickerHint, setPickerHint] = useState<string | null>(null);
+  const [lastAction, setLastAction] = useState<
+    | { kind: 'connect' }
+    | { kind: 'list' }
+    | { kind: 'import'; fileId: string; name: string }
+    | { kind: 'picker' }
+    | { kind: 'export' }
+    | null
+  >(null);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -48,6 +56,7 @@ export function GoogleDrivePanel({
     } catch (e) {
       if (e instanceof ApiError && e.status === 503) {
         setError(e.message);
+        setLastAction({ kind: 'connect' });
         setConnected(false);
         return false;
       }
@@ -62,8 +71,10 @@ export function GoogleDrivePanel({
         '/api/cloud/drive/files'
       );
       setAppFiles(data.files ?? []);
-    } catch {
+    } catch (e) {
       setAppFiles([]);
+      setError(e instanceof ApiError ? e.message : String(e));
+      setLastAction({ kind: 'list' });
     }
   }, []);
 
@@ -77,6 +88,7 @@ export function GoogleDrivePanel({
   const connect = async () => {
     setBusy(true);
     setError(null);
+    setLastAction({ kind: 'connect' });
     try {
       const { url } = await apiFetch<{ url: string }>(
         '/api/cloud/drive/auth-url'
@@ -100,6 +112,7 @@ export function GoogleDrivePanel({
       setPickerHint(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
+      setLastAction({ kind: 'connect' });
     } finally {
       setBusy(false);
     }
@@ -109,6 +122,7 @@ export function GoogleDrivePanel({
     if (!onImport) return;
     setBusy(true);
     setError(null);
+    setLastAction({ kind: 'import', fileId, name });
     try {
       const blob = await apiFetch<Blob>('/api/cloud/drive/import', {
         method: 'POST',
@@ -133,6 +147,7 @@ export function GoogleDrivePanel({
     setBusy(true);
     setError(null);
     setPickerHint(null);
+    setLastAction({ kind: 'picker' });
     try {
       const config = await apiFetch<{
         clientId: string;
@@ -170,6 +185,7 @@ export function GoogleDrivePanel({
     setBusy(true);
     setError(null);
     setExportResult(null);
+    setLastAction({ kind: 'export' });
     try {
       const form = new FormData();
       form.append('file', exportFile, exportFile.name);
@@ -192,6 +208,16 @@ export function GoogleDrivePanel({
     } finally {
       setBusy(false);
     }
+  };
+
+  const retryLast = () => {
+    setError(null);
+    if (!lastAction) return;
+    if (lastAction.kind === 'connect') void connect();
+    else if (lastAction.kind === 'list') void loadAppFiles();
+    else if (lastAction.kind === 'import') void importFile(lastAction.fileId, lastAction.name);
+    else if (lastAction.kind === 'picker') void pickFromDrive();
+    else if (lastAction.kind === 'export') void exportToDrive();
   };
 
   return (
@@ -322,6 +348,7 @@ export function GoogleDrivePanel({
           message={error}
           originalSafe
           cloudNote="Drive import/export is optional. Your local originals stay on this device."
+          onRetry={lastAction ? () => retryLast() : undefined}
         />
       ) : null}
     </div>

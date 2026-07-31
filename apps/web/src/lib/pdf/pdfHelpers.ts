@@ -24,11 +24,12 @@ async function getPdfjs(): Promise<PdfjsModule> {
 }
 
 export function ensurePdfWorker(lib?: PdfjsModule): void {
-  if (workerConfigured || typeof window === 'undefined') return;
+  if (workerConfigured) return;
   try {
     const pdfjs = lib || pdfjsLib;
     if (!pdfjs) return;
-    // Served from /public (copied by scripts/copy-pdf-worker.mjs) — not webpack/SWC
+    // Served from /public (copied by scripts/copy-pdf-worker.mjs) — not webpack/SWC.
+    // Also used from module workers (no `window`); same-origin path still resolves.
     pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
     workerConfigured = true;
   } catch (e) {
