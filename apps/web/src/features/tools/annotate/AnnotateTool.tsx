@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
-import { downloadBlobLocally } from '@/features/files/localDownload';
+import { downloadBlobLocally, uint8ToBlob } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { ToolError } from '../ToolError';
 import { ToolProgress } from '../ToolProgress';
@@ -40,6 +40,7 @@ export function AnnotateTool() {
   const [selH, setSelH] = useState(100);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<'export' | 'highlight' | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const cancelledRef = useRef(false);
   const { elapsedLabel } = useTimedProgress(busy);
@@ -114,6 +115,7 @@ export function AnnotateTool() {
     if (!file) return;
     setBusy(true);
     setError(null);
+    setErrorKind(null);
     try {
       const bytes = await file.arrayBuffer();
       const spans = await loadPageTextSpans(bytes, activePage);
@@ -125,11 +127,13 @@ export function AnnotateTool() {
       });
       if (quads.length === 0) {
         setError('No text found in the selection region.');
+        setErrorKind('highlight');
         return;
       }
       const bbox = unionQuadBounds(quads);
       if (!bbox) {
         setError('Could not compute bounding box for text selection.');
+        setErrorKind('highlight');
         return;
       }
       const item: HighlightOverlay = {
@@ -147,8 +151,10 @@ export function AnnotateTool() {
       };
       setOverlays((prev) => [...prev, item]);
       setError(null);
+      setErrorKind(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not extract text layer');
+      setErrorKind('highlight');
     } finally {
       setBusy(false);
     }
@@ -213,6 +219,7 @@ export function AnnotateTool() {
     cancelledRef.current = false;
     setBusy(true);
     setError(null);
+    setErrorKind(null);
     setProgress('Flattening annotations into content…');
     try {
       const bytes = await file.arrayBuffer();
@@ -229,19 +236,17 @@ export function AnnotateTool() {
         return;
       }
       const name = file.name.replace(/\.pdf$/i, '') + '-annotated.pdf';
-      const pdfBytes = out.buffer.slice(
-        out.byteOffset,
-        out.byteOffset + out.byteLength
-      ) as ArrayBuffer;
-      downloadBlobLocally(new Blob([pdfBytes], { type: 'application/pdf' }), name);
+      downloadBlobLocally(uint8ToBlob(out, 'application/pdf'), name);
       setProgress('Downloaded (flattened into content)');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg === 'Cancelled' || cancelledRef.current) {
         setProgress(null);
         setError(null);
+        setErrorKind(null);
       } else {
         setError(msg);
+        setErrorKind('export');
         setProgress(null);
       }
     } finally {
@@ -511,7 +516,25 @@ export function AnnotateTool() {
         </aside>
 
         {error ? (
-        <ToolError message={error} fileName={file?.name} onRetry={() => { setError(null); void exportFlattened(); }} />
+        <ToolError
+          message={error}
+          fileName={file?.name}
+          onRetry={
+            errorKind === 'export'
+              ? () => {
+                  setError(null);
+                  setErrorKind(null);
+                  void exportFlattened();
+                }
+              : errorKind === 'highlight'
+                ? () => {
+                    setError(null);
+                    setErrorKind(null);
+                    void addTextHighlight();
+                  }
+                : undefined
+          }
+        />
       ) : null}
         {busy && progress ? (
           <ToolProgress

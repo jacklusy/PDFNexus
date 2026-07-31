@@ -2,16 +2,16 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
-import { downloadBlobLocally } from '@/features/files/localDownload';
+import { downloadBlobLocally, uint8ToBlob } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { ToolError } from '../ToolError';
 import { ToolProgress } from '../ToolProgress';
 import { useTimedProgress } from '../useTimedProgress';
 import { loadReadablePdf } from '../assertPdfReadable';
-import { flattenOverlays } from '../overlays/flattenOverlays';
-import { createId, type LinkOverlay, type OverlayItem } from '../overlays/types';
+import { createId, type LinkOverlay } from '../overlays/types';
 import { assertAllowedLinkUri, isAllowedLinkUri } from '../overlays/linkUri';
-import { extractLinkAnnotations, stripAllLinkAnnotations } from '../overlays/extractLinkAnnotations';
+import { extractLinkAnnotations } from '../overlays/extractLinkAnnotations';
+import { writeLinkAnnotationsOnly } from '../overlays/writeLinkAnnotationsOnly';
 
 export function LinksTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
@@ -101,14 +101,31 @@ export function LinksTool() {
   };
 
   const updateLink = (id: string, patch: Partial<LinkOverlay>) => {
-    if (patch.uri != null && !isAllowedLinkUri(patch.uri)) {
-      setError('URI must use http:, https:, or mailto: only.');
-      return;
-    }
+    // Always apply keystrokes (including intermediate invalid URIs); validate on blur/export.
     setOverlays((prev) =>
       prev.map((l) => (l.id === id ? { ...l, ...patch } : l))
     );
     setError(null);
+  };
+
+  const validateLinkUri = (id: string) => {
+    const item = overlays.find((l) => l.id === id);
+    if (!item) return;
+    if (!isAllowedLinkUri(item.uri)) {
+      setError('URI must use http:, https:, or mailto: only.');
+      return;
+    }
+    try {
+      const normalized = assertAllowedLinkUri(item.uri);
+      if (normalized !== item.uri) {
+        setOverlays((prev) =>
+          prev.map((l) => (l.id === id ? { ...l, uri: normalized } : l))
+        );
+      }
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const removeLink = (id: string) => {
@@ -120,37 +137,43 @@ export function LinksTool() {
     cancelledRef.current = false;
     setBusy(true);
     setError(null);
-    setProgress('Stripping existing link annotations…');
+    setProgress(
+      overlays.length
+        ? 'Writing link annotations…'
+        : 'Stripping link annotations…'
+    );
     try {
+      for (const link of overlays) {
+        assertAllowedLinkUri(link.uri);
+      }
       const bytes = await file.arrayBuffer();
       if (cancelledRef.current) {
         setProgress(null);
         return;
       }
-      // Strip all link annotations from the PDF
-      const stripped = await stripAllLinkAnnotations(bytes);
-      if (cancelledRef.current) {
-        setProgress(null);
-        return;
-      }
-      setProgress('Re-adding link annotations…');
-      // Re-add all links from overlays list via flattenOverlays
-      const items: OverlayItem[] = overlays;
-      const strippedBuf = stripped.buffer.slice(
-        stripped.byteOffset,
-        stripped.byteOffset + stripped.byteLength
-      ) as ArrayBuffer;
-      const out = await flattenOverlays(strippedBuf, items, (c, t) => {
-        if (cancelledRef.current) throw new Error('Cancelled');
-        setProgress(`Processing page ${Math.min(c + 1, t)} / ${t}`);
+      const out = await writeLinkAnnotationsOnly({
+        bytes,
+        links: overlays,
+        onProgress: (c, t) => {
+          if (cancelledRef.current) throw new Error('Cancelled');
+          setProgress(
+            overlays.length
+              ? `Writing link ${Math.min(c, t)} / ${t}`
+              : 'Saving without links…'
+          );
+        },
       });
       if (cancelledRef.current) {
         setProgress(null);
         return;
       }
       const name = file.name.replace(/\.pdf$/i, '') + '-links.pdf';
-      downloadBlobLocally(new Blob([out], { type: 'application/pdf' }), name);
-      setProgress('Downloaded with link annotations');
+      downloadBlobLocally(uint8ToBlob(out, 'application/pdf'), name);
+      setProgress(
+        overlays.length
+          ? 'Downloaded with link annotations'
+          : 'Downloaded (all links removed)'
+      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg === 'Cancelled' || cancelledRef.current) {
@@ -179,11 +202,11 @@ export function LinksTool() {
       footer={
         <Button
           variant="primary"
-          disabled={!file || busy || overlays.length === 0}
+          disabled={!file || busy}
           loading={busy}
           onClick={() => void exportWithLinks()}
         >
-          Export with links
+          {overlays.length === 0 ? 'Export (remove all links)' : 'Export with links'}
         </Button>
       }
     >
@@ -285,6 +308,7 @@ export function LinksTool() {
                       type="url"
                       value={item.uri}
                       onChange={(e) => updateLink(item.id, { uri: e.target.value })}
+                      onBlur={() => validateLinkUri(item.id)}
                       className="flex-1 rounded border border-[var(--color-border)] px-2 py-1 text-sm"
                       aria-label="Link URI"
                     />

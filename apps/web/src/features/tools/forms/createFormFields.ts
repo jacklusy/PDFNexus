@@ -4,6 +4,7 @@
 
 import { loadReadablePdf } from '../assertPdfReadable';
 import { PDFName, PDFString } from 'pdf-lib';
+import type { PDFPage } from 'pdf-lib';
 
 export type FormFieldType =
   | 'text'
@@ -71,6 +72,7 @@ export async function createFormFields(
   }
 
   const usedNames = new Set<string>();
+  const touchedPages = new Set<PDFPage>();
 
   for (const spec of options.fields) {
     const name = spec.name.trim();
@@ -95,6 +97,7 @@ export async function createFormFields(
     }
 
     const page = doc.getPage(spec.page - 1);
+    touchedPages.add(page);
     const box = {
       x: spec.x,
       y: spec.y,
@@ -169,6 +172,11 @@ export async function createFormFields(
         throw new Error(`Unsupported field type: ${_exhaustive}`);
       }
     }
+  }
+
+  // List / creation order = widget tab order for viewers that honor /Tabs /A.
+  for (const page of touchedPages) {
+    page.node.set(PDFName.of('Tabs'), PDFName.of('A'));
   }
 
   form.updateFieldAppearances();

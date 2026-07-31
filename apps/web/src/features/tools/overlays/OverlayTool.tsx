@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
-import { downloadBlobLocally } from '@/features/files/localDownload';
+import { downloadBlobLocally, uint8ToBlob } from '@/features/files/localDownload';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { ToolError } from '../ToolError';
 import { ToolProgress } from '../ToolProgress';
@@ -333,7 +333,7 @@ export function OverlayTool({ mode }: { mode: OverlayToolMode }) {
               ? '-numbered'
               : '-edited';
       downloadBlobLocally(
-        new Blob([out], { type: 'application/pdf' }),
+        uint8ToBlob(out, 'application/pdf'),
         file.name.replace(/\.pdf$/i, '') + `${suffix}.pdf`
       );
       setProgress('Downloaded');

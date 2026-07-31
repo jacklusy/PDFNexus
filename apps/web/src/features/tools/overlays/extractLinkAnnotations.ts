@@ -129,7 +129,10 @@ export async function stripAllLinkAnnotations(
     for (let j = 0; j < annots.size(); j++) {
       const ref = annots.get(j);
       const annot = doc.context.lookup(ref);
-      if (!(annot instanceof PDFDict)) continue;
+      if (!(annot instanceof PDFDict)) {
+        kept.push(ref as PDFRef);
+        continue;
+      }
       const subtype = annot.get(PDFName.of('Subtype'));
       if (subtype && String(subtype) === '/Link') continue;
       kept.push(ref as PDFRef);

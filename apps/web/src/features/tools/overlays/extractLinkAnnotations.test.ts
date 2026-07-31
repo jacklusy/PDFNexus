@@ -5,6 +5,7 @@ import {
   extractLinkAnnotations,
   stripAllLinkAnnotations,
 } from './extractLinkAnnotations';
+import { uint8ToArrayBuffer } from '@/features/files/localDownload';
 
 describe('extractLinkAnnotations', () => {
   it('extracts URI links written with addLinkAnnotation', async () => {
@@ -18,7 +19,7 @@ describe('extractLinkAnnotations', () => {
       uri: 'https://example.com/path',
     });
     const bytes = await doc.save();
-    const found = await extractLinkAnnotations(bytes.buffer as ArrayBuffer);
+    const found = await extractLinkAnnotations(uint8ToArrayBuffer(bytes));
     expect(found).toHaveLength(1);
     expect(found[0].uri).toBe('https://example.com/path');
     expect(found[0].source).toBe('existing');
@@ -36,13 +37,8 @@ describe('extractLinkAnnotations', () => {
       uri: 'https://example.com',
     });
     const bytes = await doc.save();
-    const stripped = await stripAllLinkAnnotations(bytes.buffer as ArrayBuffer);
-    const found = await extractLinkAnnotations(
-      stripped.buffer.slice(
-        stripped.byteOffset,
-        stripped.byteOffset + stripped.byteLength
-      ) as ArrayBuffer
-    );
+    const stripped = await stripAllLinkAnnotations(uint8ToArrayBuffer(bytes));
+    const found = await extractLinkAnnotations(uint8ToArrayBuffer(stripped));
     expect(found).toHaveLength(0);
   });
 });

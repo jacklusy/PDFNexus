@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { downloadBlobLocally, createLocalExport } from './localDownload';
+import { downloadBlobLocally, createLocalExport, uint8ToBlob } from './localDownload';
 
 vi.mock('@/lib/pdf/pdfHelpers', () => ({
   trackObjectUrl: (url: string) => url,
@@ -59,5 +59,12 @@ describe('localDownload', () => {
     expect(result.fileName).toBe('a.pdf');
     expect(result.pageCount).toBe(3);
     expect(result.localBlobUrl).toBe('blob:local-test');
+  });
+
+  it('uint8ToBlob builds a typed Blob', async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const blob = uint8ToBlob(bytes, 'application/pdf');
+    expect(blob.type).toBe('application/pdf');
+    expect(blob.size).toBe(3);
   });
 });

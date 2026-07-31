@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
-import { downloadBlobLocally } from '@/features/files/localDownload';
+import { downloadBlobLocally, uint8ToBlob } from '@/features/files/localDownload';
 import { ToolWorkbench } from '../ToolWorkbench';
 import { ToolError } from '../ToolError';
 import { ToolProgress } from '../ToolProgress';
@@ -101,6 +101,10 @@ export function FormsTool() {
       setError(`${type === 'radio' ? 'Radio' : 'Dropdown'} fields require at least one option.`);
       return;
     }
+    if (fields.some((f) => f.name === trimmed)) {
+      setError(`Duplicate field name “${trimmed}”.`);
+      return;
+    }
     const spec: FormFieldSpec & { id: string } = {
       id: makeId(),
       type,
@@ -169,7 +173,7 @@ export function FormsTool() {
         return;
       }
       const outName = file.name.replace(/\.pdf$/i, '') + '-form.pdf';
-      downloadBlobLocally(new Blob([out], { type: 'application/pdf' }), outName);
+      downloadBlobLocally(uint8ToBlob(out, 'application/pdf'), outName);
       setProgress(`Downloaded with ${fields.length} field(s)`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

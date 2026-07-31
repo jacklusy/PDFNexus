@@ -1,6 +1,18 @@
 import { trackObjectUrl, revokeObjectUrl } from '@/lib/pdf/pdfHelpers';
 import { triggerBrowserDownload } from './api';
 
+/** Copy a Uint8Array into a plain ArrayBuffer (BlobPart-safe). */
+export function uint8ToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  ) as ArrayBuffer;
+}
+
+export function uint8ToBlob(bytes: Uint8Array, mimeType: string): Blob {
+  return new Blob([uint8ToArrayBuffer(bytes)], { type: mimeType });
+}
+
 /**
  * Immediate, ungated local download of a browser-produced Blob.
  * Does not call auth or upload APIs.

@@ -1,4 +1,4 @@
-# PDFNexus — Platform status (Phases 5–27)
+# PDFNexus — Platform status (Phases 5–30)
 
 **No healthcare or legal compliance claims.** Browser/a11y rows below are a **manual QA checklist**, not a claim that every cell was validated in CI.
 
@@ -22,35 +22,62 @@
 
 Local downloads remain ungated. Email verification is optional delivery only.
 
-## Phase 5–24 (summary)
+## Phase 5–27 (summary)
 
-Workers, cancel honesty, Bates continuity, nested pdf.js `disableWorker`, OCR Cancel, download gates, honest manual QA templates.
+Workers, cancel honesty, Bates continuity, nested pdf.js `disableWorker`, OCR Cancel, text-layer highlight, URI link extract, forms polish, typed callouts, soft Cancel on Merge/Rotate/JpgToPdf + annotate/links/forms/overlay.
 
-## Phase 25 (soft cancel + evidence)
+## Phase 28 (Links High fixes)
 
-- ToolProgress + soft Cancel on Merge / Rotate / JpgToPdf and Annotate / Links / Forms / Overlay export
-- Excel OCR abort early-return progress-clear regression test
-- `downloadWorkerOutputs` comment covers Extract / Compress
+- Links export uses `writeLinkAnnotationsOnly` (no burned `(link:` chrome)
+- Empty link list export allowed (strip-only)
+- URI edits update on keystroke; validate on blur / Add / Export
 
-## Phase 26 (annotate + links)
+## Phase 29 (Medium harden + coverage)
 
-- Text-layer highlight via `textLayerQuads` (area highlight remains)
-- Existing URI Link extract / list / edit / delete; export strips then re-adds
-- Annotate / edit-links SEO copy updated
+- Forms page `/Tabs` `/A`; duplicate name rejected in UI; mailto CRLF rejected
+- Strip preserves non-dict Annots; `uint8ToBlob` / `uint8ToArrayBuffer` shared helper
+- Annotate Retry matches error kind (export vs text highlight)
+- New tests: createFormFields, writeLinkAnnotationsOnly, callout flatten, splitPdf, mailto injection
 
-## Phase 27 (forms + callouts + status)
+## Phase 30 (QA evidence)
 
-- Forms: list order = tab order (Up/Down), name/options validation, optional tooltip
-- Typed `CalloutOverlay` (box + text + optional leader) in flatten + OverlayTool
-- §19 / §20 remain **templates / manual QA** — no invented pass rates
+Automated suite green (web vitest + typecheck; api vitest + typecheck). Honest matrix below — **do not invent Passed for unexecuted manual cells**.
+
+### QA matrix
+
+| Area | Status | Evidence |
+| --- | --- | --- |
+| Worker cancel / Bates deliver / OCR abort | Passed (auto) | vitest: runInWorker, deliverBatesOutputs, ocrTables.abort |
+| Links extract / annotations-only / empty export | Passed (auto) | writeLinkAnnotationsOnly, extractLinkAnnotations |
+| Forms validation + Tabs | Passed (auto) | createFormFields.test |
+| Split plan + smoke | Passed (auto) | splitPdf.test |
+| Callout flatten | Passed (auto) | flattenOverlays.test |
+| mailto CRLF / scheme allowlist | Passed (auto) | linkUri.test |
+| Phase 1 Merge/Rotate/Jpg soft cancel | Passed (code review + unit wiring) | SimpleTools ToolProgress Cancel |
+| Browser matrix (Firefox/Safari/mobile) | Manual | §20 `_not recorded_` |
+| Full a11y PHASE checklists | Manual | tool a11y docs |
+| Live cloud OAuth / Picker | Manual | provider-dependent |
+| Measured perf / §13 ETA | Manual / OOS | templates only |
+| §9 text edit / Adobe CMS/TSA/LTV / multi-op DAG / full-library cloud | OOS | unchanged |
+
+### Spot-check notes (manual — fill in during QA)
+
+| Check | Result |
+| --- | --- |
+| Cancel after worker start does not orphan-reject | _not recorded_ |
+| Bates download then Cancel still advances next number | _not recorded_ |
+| Text-layer highlight on text PDF | _not recorded_ |
+| Existing URI links listed; export has no burned chrome | _not recorded_ |
+| Export after deleting all links | _not recorded_ |
+| Typed callout exports as one overlay | _not recorded_ |
 
 ## §19 Performance notes (templates / known limits)
 
 Numbers below are **design limits and patterns**, not measured CI benchmarks collected in-repo.
 
 - Workers: structural compress, JPEG raster compress, split, extract, merge, PDF→images
-- Inside module workers, pdf.js runs with **`disableWorker: true`** (avoids nested workers)
-- Soft UI hint around **80MB+** local PDFs (guidance only)
+- Inside module workers, pdf.js runs with **`disableWorker: true`**
+- Soft UI hint around **80MB+** local PDFs
 - Cloud imports/exports capped at **50MB**
 - Soft Cancel finishes the current await step, then stops
 
@@ -60,18 +87,8 @@ Numbers below are **design limits and patterns**, not measured CI benchmarks col
 | --- | --- | --- |
 | Chromium (Chrome/Edge) | Primary target | Run smoke here first |
 | Firefox | Manual | Confirm downloads + workers |
-| Safari | Manual | Confirm download quirks; nested-worker avoidance helps |
+| Safari | Manual | Confirm download quirks |
 | Mobile | Best-effort | Large PDFs may OOM |
-
-### Spot-check notes (manual — fill in during QA)
-
-| Check | Result |
-| --- | --- |
-| Cancel after worker start does not orphan-reject | _not recorded_ |
-| Bates download then Cancel still advances next number (storage + UI start) | _not recorded_ |
-| Text-layer highlight on text PDF | _not recorded_ |
-| Existing URI links listed on upload | _not recorded_ |
-| Typed callout exports as one overlay | _not recorded_ |
 
 ## Known limitations / remaining gaps
 

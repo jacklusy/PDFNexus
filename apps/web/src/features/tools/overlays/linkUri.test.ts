@@ -15,6 +15,12 @@ describe('linkUri allowlist', () => {
     expect(isAllowedLinkUri('')).toBe(false);
   });
 
+  it('rejects mailto header injection', () => {
+    expect(isAllowedLinkUri('mailto:a@b.com%0aBcc:evil@x.com')).toBe(false);
+    expect(isAllowedLinkUri('mailto:a@b.com%0d%0aCc:x@y.com')).toBe(false);
+    expect(isAllowedLinkUri('mailto:a@b.com\nbad')).toBe(false);
+  });
+
   it('assertAllowedLinkUri throws', () => {
     expect(() => assertAllowedLinkUri('javascript:x')).toThrow(/http/);
   });

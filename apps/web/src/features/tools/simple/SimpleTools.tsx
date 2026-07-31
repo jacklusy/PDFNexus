@@ -3,7 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { PDFDocument } from 'pdf-lib';
 import { Button } from '@/shared/ui/Button';
-import { downloadBlobLocally } from '@/features/files/localDownload';
+import { downloadBlobLocally, uint8ToBlob } from '@/features/files/localDownload';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { ToolError } from '../ToolError';
@@ -64,10 +64,7 @@ export function MergeTool() {
         setProgress(null);
         return;
       }
-      downloadBlobLocally(
-        new Blob([saved], { type: 'application/pdf' }),
-        'merged.pdf'
-      );
+      downloadBlobLocally(uint8ToBlob(saved, 'application/pdf'), 'merged.pdf');
       setProgress('Downloaded merged.pdf');
       setFileCurrent(0);
       setFileTotal(0);
@@ -176,7 +173,7 @@ export function RotateTool() {
         return;
       }
       downloadBlobLocally(
-        new Blob([saved], { type: 'application/pdf' }),
+        uint8ToBlob(saved, 'application/pdf'),
         file.name.replace(/\.pdf$/i, '') + `-rotated-${angle}.pdf`
       );
       setProgress('Downloaded');
@@ -308,7 +305,7 @@ export function JpgToPdfTool() {
         setProgress(null);
         return;
       }
-      downloadBlobLocally(new Blob([saved], { type: 'application/pdf' }), 'images.pdf');
+      downloadBlobLocally(uint8ToBlob(saved, 'application/pdf'), 'images.pdf');
       setProgress('Downloaded images.pdf');
       setFileCurrent(0);
       setFileTotal(0);
