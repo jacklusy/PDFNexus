@@ -61,10 +61,9 @@ export async function detectTablesViaOcr(options: {
   const { ensurePdfJsWorker } = await import('@/lib/pdf/ensurePdfJsWorker');
   ensurePdfJsWorker(pdfjs);
   throwIfAborted();
-  const task = pdfjs.getDocument({
-    data: options.bytes.slice(0),
-    isEvalSupported: false,
-  });
+  const task = pdfjs.getDocument(
+    (await import('@/lib/pdf/ensurePdfJsWorker')).pdfJsGetDocumentInit(options.bytes)
+  );
   const doc = await task.promise;
   let pageList = options.pages;
   try {
@@ -87,6 +86,7 @@ export async function detectTablesViaOcr(options: {
     background: '#ffffff',
     namePattern: 'p{n}',
     baseName: 'ocr',
+    signal: options.signal,
   });
 
   const tables: DetectedTable[] = [];

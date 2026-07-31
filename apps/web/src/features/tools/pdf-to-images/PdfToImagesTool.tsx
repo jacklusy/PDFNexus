@@ -10,9 +10,10 @@ import { useTimedProgress } from '../useTimedProgress';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { parsePageRanges } from '../parsePageRanges';
 import { zipOutputs } from '../zipOutputs';
-import { runWorkerTask, WorkerCancelledError } from '../runInWorker';
+import { runWorkerTask, WorkerCancelledError, cancelAndAwait } from '../runInWorker';
 import { softLargePdfHint } from '../softLargePdfHint';
-import { type ImageExportFormat } from './pdfToImages';
+import { downloadWorkerOutputs } from '../downloadWorkerOutputs';
+import { type ImageExportFormat, PDF_TO_IMAGES_MIN_SCALE } from './pdfToImages';
 
 export function PdfToImagesTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
@@ -120,8 +121,7 @@ export function PdfToImagesTool() {
       });
       cancelWorker = cancel;
       if (cancelledBeforeWorkerRef.current) {
-        cancel();
-        throw new WorkerCancelledError();
+        await cancelAndAwait(cancel, promise);
       }
       const result = await promise;
       if (cancelledBeforeWorkerRef.current) {
@@ -131,18 +131,16 @@ export function PdfToImagesTool() {
         fileName: f.fileName,
         blob: new Blob([f.bytes], { type: f.mimeType }),
       }));
-      if (named.length > 1) {
-        setProgress('Building ZIP…');
-        if (cancelledBeforeWorkerRef.current) {
-          throw new WorkerCancelledError();
-        }
-        const zip = await zipOutputs(named);
-        if (cancelledBeforeWorkerRef.current) {
-          throw new WorkerCancelledError();
-        }
-        downloadBlobLocally(zip, `${baseName}-images.zip`);
-      } else if (named[0]) {
-        downloadBlobLocally(named[0].blob, named[0].fileName);
+      const outcome = await downloadWorkerOutputs({
+        isCancelled: () => cancelledBeforeWorkerRef.current,
+        files: named,
+        zipName: `${baseName}-images.zip`,
+        download: downloadBlobLocally,
+        zipOutputs,
+        onBuildingZip: () => setProgress('Building ZIP…'),
+      });
+      if (outcome === 'cancelled') {
+        throw new WorkerCancelledError();
       }
       setProgress(`Done — ${named.length} image(s)`);
       setProgressCurrent(0);
@@ -230,7 +228,7 @@ export function PdfToImagesTool() {
               Scale
               <input
                 type="number"
-                min={0.5}
+                min={PDF_TO_IMAGES_MIN_SCALE}
                 max={4}
                 step={0.5}
                 className="mt-1 w-full rounded-lg border px-3 py-2"

@@ -4,13 +4,14 @@
  * module worker (OffscreenCanvas). ZIP stays on the main thread.
  */
 
-import { ensurePdfJsWorker } from '@/lib/pdf/ensurePdfJsWorker';
+import { ensurePdfJsWorker, pdfJsGetDocumentInit } from '@/lib/pdf/ensurePdfJsWorker';
 import { zipOutputs } from '../zipOutputs';
 
 export type ImageExportFormat = 'image/jpeg' | 'image/png' | 'image/webp';
 
-/** Hard cap for render scale (UI suggests 0.5–4). */
+/** Hard cap for render scale (UI allows 0.25–4). */
 export const PDF_TO_IMAGES_MAX_SCALE = 4;
+export const PDF_TO_IMAGES_MIN_SCALE = 0.25;
 /** Max canvas edge in CSS pixels to reduce OOM risk. */
 export const PDF_TO_IMAGES_MAX_EDGE_PX = 4096;
 
@@ -24,6 +25,8 @@ export interface PdfToImagesOptions {
   namePattern: string; // use {n} for page number
   baseName: string;
   onProgress?: (current: number, total: number) => void;
+  /** Abort between pages (does not interrupt mid-render of a page). */
+  signal?: AbortSignal;
 }
 
 export interface PdfToImagesPageBuffer {
@@ -49,7 +52,7 @@ function extFor(format: ImageExportFormat): string {
 
 export function clampPdfToImagesScale(scale: number): number {
   if (!Number.isFinite(scale) || scale <= 0) return 1;
-  return Math.min(PDF_TO_IMAGES_MAX_SCALE, Math.max(0.25, scale));
+  return Math.min(PDF_TO_IMAGES_MAX_SCALE, Math.max(PDF_TO_IMAGES_MIN_SCALE, scale));
 }
 
 export function clampCanvasEdge(
@@ -131,18 +134,25 @@ function createRenderCanvas(
 export async function pdfToImageBuffers(
   options: PdfToImagesOptions
 ): Promise<PdfToImagesBuffersResult> {
+  const throwIfAborted = () => {
+    if (options.signal?.aborted) {
+      const err = new Error('Cancelled');
+      err.name = 'AbortError';
+      throw err;
+    }
+  };
+  throwIfAborted();
+
   const pdfjs = await import('pdfjs-dist');
   ensurePdfJsWorker(pdfjs);
   const scale = clampPdfToImagesScale(options.scale);
-  const task = pdfjs.getDocument({
-    data: options.bytes.slice(0),
-    isEvalSupported: false,
-  });
+  const task = pdfjs.getDocument(pdfJsGetDocumentInit(options.bytes));
   const doc = await task.promise;
   const files: PdfToImagesPageBuffer[] = [];
 
   try {
     for (let i = 0; i < options.pages.length; i++) {
+      throwIfAborted();
       const pageNum = options.pages[i];
       options.onProgress?.(i, options.pages.length);
       const page = await doc.getPage(pageNum);
@@ -168,6 +178,7 @@ export async function pdfToImageBuffers(
           viewport,
           canvas: canvas as HTMLCanvasElement,
         }).promise;
+        throwIfAborted();
         const bytes = await canvasToArrayBuffer(
           canvas,
           options.format,

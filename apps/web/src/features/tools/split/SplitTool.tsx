@@ -11,7 +11,8 @@ import { loadReadablePdf } from '../assertPdfReadable';
 import { zipOutputs } from '../zipOutputs';
 import { softLargePdfHint } from '../softLargePdfHint';
 import { planSplitRanges, type SplitMode } from './splitPdf';
-import { runWorkerTask, WorkerCancelledError } from '../runInWorker';
+import { runWorkerTask, WorkerCancelledError, cancelAndAwait } from '../runInWorker';
+import { downloadWorkerOutputs } from '../downloadWorkerOutputs';
 
 function baseName(name: string) {
   return name.replace(/\.pdf$/i, '') || 'split';
@@ -143,8 +144,7 @@ export function SplitTool() {
       });
       cancelWorker = cancel;
       if (cancelledBeforeWorkerRef.current) {
-        cancel();
-        throw new WorkerCancelledError();
+        await cancelAndAwait(cancel, promise);
       }
       const result = await promise;
       if (cancelledBeforeWorkerRef.current) {
@@ -155,18 +155,16 @@ export function SplitTool() {
         blob: new Blob([p.bytes], { type: 'application/pdf' }),
       }));
 
-      if (named.length === 1) {
-        downloadBlobLocally(named[0].blob, named[0].fileName);
-      } else {
-        setProgress('Building ZIP…');
-        if (cancelledBeforeWorkerRef.current) {
-          throw new WorkerCancelledError();
-        }
-        const zip = await zipOutputs(named);
-        if (cancelledBeforeWorkerRef.current) {
-          throw new WorkerCancelledError();
-        }
-        downloadBlobLocally(zip, `${baseName(file.name)}-split.zip`);
+      const outcome = await downloadWorkerOutputs({
+        isCancelled: () => cancelledBeforeWorkerRef.current,
+        files: named,
+        zipName: `${baseName(file.name)}-split.zip`,
+        download: downloadBlobLocally,
+        zipOutputs,
+        onBuildingZip: () => setProgress('Building ZIP…'),
+      });
+      if (outcome === 'cancelled') {
+        throw new WorkerCancelledError();
       }
       setProgress(`Done — ${named.length} file${named.length === 1 ? '' : 's'}`);
       setProgressCurrent(0);

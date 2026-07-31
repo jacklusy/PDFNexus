@@ -52,15 +52,10 @@ export function PdfToHtmlTool() {
         setProgress(null);
         return;
       }
-      const fresh = await file.arrayBuffer();
-      if (cancelledRef.current) {
-        setProgress(null);
-        return;
-      }
       const title = file.name.replace(/\.pdf$/i, '') || 'PDF export';
       setProgress('Extracting text…');
       const result = await pdfToHtml({
-        bytes: fresh,
+        bytes,
         title,
         onProgress: (c, t) => {
           if (cancelledRef.current) throw new Error('Cancelled');
@@ -112,6 +107,7 @@ export function PdfToHtmlTool() {
         setProgress(null);
       }}
       busy={busy}
+      processingMode="local"
       footer={
         <>
           <Button

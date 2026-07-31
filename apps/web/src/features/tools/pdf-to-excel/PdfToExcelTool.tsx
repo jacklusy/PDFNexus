@@ -12,6 +12,8 @@ import { canRunOcrTableDetect, detectTablesViaOcr } from './ocrTables';
 import { createGenerationGuard } from './ocrGenerationGuard';
 import { pdfToExcel } from './pdfToExcel';
 import { ToolError } from '../ToolError';
+import { ToolProgress } from '../ToolProgress';
+import { useTimedProgress } from '../useTimedProgress';
 
 export function PdfToExcelTool() {
   const { files, setFiles } = useToolHandoff();
@@ -26,6 +28,7 @@ export function PdfToExcelTool() {
   const [ocrBusy, setOcrBusy] = useState(false);
   const ocrGuardRef = React.useRef(createGenerationGuard());
   const ocrAbortRef = React.useRef<AbortController | null>(null);
+  const { elapsedLabel } = useTimedProgress(ocrBusy);
 
   const file = files[0]?.file;
 
@@ -119,15 +122,18 @@ export function PdfToExcelTool() {
         ac.signal.aborted ||
         (e instanceof Error && (e.name === 'AbortError' || e.message === 'Cancelled'))
       ) {
+        if (ocrGuardRef.current.isCurrent(gen)) setProgress(null);
         return;
       }
       if (!ocrGuardRef.current.isCurrent(gen)) return;
       setError(e instanceof Error ? e.message : String(e));
       setProgress(null);
     } finally {
-      // Always clear busy flags so cloud_assisted does not stick after invalidate.
-      setBusy(false);
-      setOcrBusy(false);
+      // Only clear busy if this generation still owns the run.
+      if (ocrGuardRef.current.isCurrent(gen)) {
+        setBusy(false);
+        setOcrBusy(false);
+      }
       if (ocrAbortRef.current === ac) ocrAbortRef.current = null;
     }
   };
@@ -278,7 +284,18 @@ export function PdfToExcelTool() {
         </p>
       ) : null}
 
-      {progress ? <p className="text-sm text-[var(--color-muted)]">{progress}</p> : null}
+      {ocrBusy && progress ? (
+        <ToolProgress
+          stage={progress}
+          elapsedLabel={elapsedLabel}
+          onCancel={() => {
+            ocrAbortRef.current?.abort();
+            setProgress('Cancelling…');
+          }}
+        />
+      ) : progress ? (
+        <p className="text-sm text-[var(--color-muted)]">{progress}</p>
+      ) : null}
       {error ? (
         <ToolError
           message={error}

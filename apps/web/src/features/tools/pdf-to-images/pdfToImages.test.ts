@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   clampCanvasEdge,
   clampPdfToImagesScale,
@@ -6,6 +6,7 @@ import {
   pdfToImagesWorkerOkMessage,
   PDF_TO_IMAGES_MAX_EDGE_PX,
   PDF_TO_IMAGES_MAX_SCALE,
+  PDF_TO_IMAGES_MIN_SCALE,
 } from './pdfToImages';
 
 describe('pdf-to-images worker contract', () => {
@@ -28,6 +29,9 @@ describe('pdf-to-images clamps', () => {
   it('clamps scale to a safe range', () => {
     expect(clampPdfToImagesScale(0)).toBe(1);
     expect(clampPdfToImagesScale(99)).toBe(PDF_TO_IMAGES_MAX_SCALE);
+    expect(clampPdfToImagesScale(PDF_TO_IMAGES_MIN_SCALE / 2)).toBe(
+      PDF_TO_IMAGES_MIN_SCALE
+    );
     expect(clampPdfToImagesScale(2)).toBe(2);
   });
 
@@ -35,21 +39,5 @@ describe('pdf-to-images clamps', () => {
     const big = clampCanvasEdge(PDF_TO_IMAGES_MAX_EDGE_PX * 2, 100);
     expect(big.width).toBeLessThanOrEqual(PDF_TO_IMAGES_MAX_EDGE_PX);
     expect(big.scaleFactor).toBeLessThan(1);
-  });
-});
-
-describe('cancel-before-zip guard pattern', () => {
-  it('skips download when cancelled after worker result', async () => {
-    const download = vi.fn();
-    const cancelled = { current: false };
-    const named = [{ fileName: 'a.jpg', blob: new Blob(['x']) }];
-
-    cancelled.current = true;
-    if (cancelled.current) {
-      // mirror PdfToImagesTool / SplitTool post-worker check
-    } else {
-      download(named[0].blob, named[0].fileName);
-    }
-    expect(download).not.toHaveBeenCalled();
   });
 });

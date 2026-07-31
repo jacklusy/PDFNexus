@@ -15,7 +15,7 @@ import {
   type CompressPreset,
   type CompressResult,
 } from './compressPdf';
-import { runWorkerTask, WorkerCancelledError } from '../runInWorker';
+import { runWorkerTask, WorkerCancelledError, cancelAndAwait } from '../runInWorker';
 
 export function CompressTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
@@ -119,8 +119,7 @@ export function CompressTool() {
       });
       cancelWorker = cancel;
       if (cancelledRef.current) {
-        cancel();
-        throw new WorkerCancelledError();
+        await cancelAndAwait(cancel, promise);
       }
       const workerResult = await promise;
       if (cancelledRef.current) throw new WorkerCancelledError();

@@ -1,4 +1,4 @@
-# PDFNexus — Platform status (Phases 5–19)
+# PDFNexus — Platform status (Phases 5–22)
 
 **No healthcare or legal compliance claims.** Browser/a11y rows below are a **manual QA checklist**, not a claim that every cell was validated in CI.
 
@@ -22,39 +22,36 @@
 
 Local downloads remain ungated. Email verification is optional delivery only.
 
-## Phase 5–16 (summary)
+## Phase 5–19 (summary)
 
-See earlier sections / prior docs. Highlights through 16: cloud harden, ToolError, extract + PDF→images workers, Bates continuity after deliver, ToolProgress rollout, soft size hint, honest manual QA templates.
+See earlier docs. Through 19: workers (split/extract/images/compress raster), cancel settle-on-cancel, Bates continuity, ToolProgress, soft size hint, honest manual QA templates.
 
-## Phase 17 (cancel + OCR abort)
+## Phase 20 (cancel races)
 
-- `runWorkerTask` Cancel **settles immediately** with `WorkerCancelledError` (no 180s timeout-as-cancel)
-- Split / Extract / PDF→images / Compress: cancel wired before worker await; skip zip/download if cancelled after worker
-- Bates: `deliverBatesOutputs` respects `isCancelled` before `writeNext`
-- PdfToExcel OCR: `AbortSignal` on `fetch`; abort on file change / new OCR / unmount; always clear `ocrBusy`
+- `cancelAndAwait`: cancel + await so worker rejections are never orphaned (Split / Extract / PDF→images / Compress)
+- OCR `finally` clears `busy`/`ocrBusy` only when generation is still current
+- Bates: after successful download, **always** `writeNext` (cancel only blocks before download starts)
 
-## Phase 18 (harden + JPEG raster worker)
+## Phase 21 (nested workers + OCR cancel UX)
 
-- Detect vs OCR share generation guard (neither overwrites the other when stale)
-- Cloud Retry: export requires consent (keeps error if unchecked); disconnect Retry re-runs disconnect
-- PDF→images: scale/edge clamps, `page.cleanup()`, slim `ensurePdfJsWorker` (no pdf-lib in worker import)
-- Soft-cancel tools: “Cancelling after current step…” honesty copy
-- EPUB/HTML: 1-based `currentPage` in ToolProgress
-- Workspace: removed absolute “No quality loss” claim
-- Compress JPEG raster: `compress-raster.worker.ts` (OffscreenCanvas); structural path remains `compress.worker.ts`
+- Module workers use `pdfJsGetDocumentInit` → `disableWorker: true` (no nested pdf.js worker)
+- OCR passes `AbortSignal` into page render (`pdfToImages`); Excel OCR has `ToolProgress` Cancel
+- Sidebar “No quality loss” softened; HTML `processingMode="local"`; EPUB/HTML single `arrayBuffer`
+- Real `downloadWorkerOutputs` gate (replaces stub cancel-before-zip “test”)
 
-## Phase 19 (evidence)
+## Phase 22 (evidence)
 
-- Targeted tests: `runInWorker` prompt cancel, OCR abort stops fetch, Bates cancel-during-zip, images scale clamps
+- Tests: `cancelAndAwait`, Bates download-then-cancel still persists, OCR abort exact fetch counts, `downloadWorkerOutputs`, OCR finally gen-gate, `disableWorker` init
 - §19 / §20 remain **templates / manual QA** — no invented pass rates
-- Still documented limits: soft tools lack mid-op AbortSignal; §9 / CMS / DAG / full-library cloud OOS; measured perf/a11y manual only
+- Remaining: soft-tool mid-op AbortSignal, §9 / CMS / DAG / full-library cloud, measured perf/a11y manual only
 
 ## §19 Performance notes (templates / known limits)
 
 Numbers below are **design limits and patterns**, not measured CI benchmarks collected in-repo.
 
 - Workers: structural compress, JPEG raster compress, split, extract, merge, PDF→images
-- Soft UI hint around **80MB+** local PDFs (guidance only; shows approximate MB)
+- Inside module workers, pdf.js runs with **`disableWorker: true`** (avoids nested workers)
+- Soft UI hint around **80MB+** local PDFs (guidance only)
 - Cloud imports/exports capped at **50MB**
 - Soft Cancel on Flatten/Protect/Unlock/Crop/Resize finishes the current await step, then stops
 
@@ -64,17 +61,17 @@ Numbers below are **design limits and patterns**, not measured CI benchmarks col
 | --- | --- | --- |
 | Chromium (Chrome/Edge) | Primary target | Run smoke here first |
 | Firefox | Manual | Confirm downloads + workers |
-| Safari | Manual | Confirm download quirks |
+| Safari | Manual | Confirm download quirks; nested-worker avoidance helps |
 | Mobile | Best-effort | Large PDFs may OOM |
 
 ### Spot-check notes (manual — fill in during QA)
 
 | Check | Result |
 | --- | --- |
-| Worker Cancel settles immediately (no timeout error) | _not recorded_ |
-| OCR abort on file change (no further uploads) | _not recorded_ |
-| JPEG compress raster worker | _not recorded_ |
-| Cloud export Retry without consent keeps error | _not recorded_ |
+| Cancel after worker start does not orphan-reject | _not recorded_ |
+| Bates download then Cancel still advances next number | _not recorded_ |
+| Excel OCR Cancel stops further uploads | _not recorded_ |
+| JPEG raster worker (disableWorker) | _not recorded_ |
 
 ## Known limitations / remaining gaps
 

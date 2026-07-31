@@ -1,6 +1,7 @@
 /**
  * Deliver Bates outputs, then persist the next number.
- * Continuity is written only after a successful single download or zip.
+ * Continuity is written only after a successful download (single or zip).
+ * Cancel before download starts skips persist; after download always writeNext.
  */
 export async function deliverBatesOutputs(options: {
   outputs: Array<{ fileName: string; blob: Blob }>;
@@ -10,7 +11,7 @@ export async function deliverBatesOutputs(options: {
   zipOutputs: (
     files: Array<{ fileName: string; blob: Blob }>
   ) => Promise<Blob>;
-  /** If true before writeNext, skip persistence and throw Cancelled. */
+  /** Checked before download/zip starts (and mid-zip before download). */
   isCancelled?: () => boolean;
 }): Promise<void> {
   if (options.isCancelled?.()) {
@@ -25,8 +26,6 @@ export async function deliverBatesOutputs(options: {
     }
     options.download(zip, 'bates-numbered.zip');
   }
-  if (options.isCancelled?.()) {
-    throw new Error('Cancelled');
-  }
+  // Artifact already delivered — always persist continuity.
   options.writeNext(options.next);
 }

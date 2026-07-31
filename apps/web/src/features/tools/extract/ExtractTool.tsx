@@ -10,7 +10,7 @@ import { ToolError } from '../ToolError';
 import { ToolProgress } from '../ToolProgress';
 import { useTimedProgress } from '../useTimedProgress';
 import { softLargePdfHint } from '../softLargePdfHint';
-import { runWorkerTask, WorkerCancelledError } from '../runInWorker';
+import { runWorkerTask, WorkerCancelledError, cancelAndAwait } from '../runInWorker';
 
 export function ExtractTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
@@ -126,8 +126,7 @@ export function ExtractTool() {
       });
       cancelWorker = cancel;
       if (cancelledBeforeWorkerRef.current) {
-        cancel();
-        throw new WorkerCancelledError();
+        await cancelAndAwait(cancel, promise);
       }
       const result = await promise;
       if (cancelledBeforeWorkerRef.current) {

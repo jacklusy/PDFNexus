@@ -71,4 +71,45 @@ describe('deliverBatesOutputs', () => {
     expect(writeNext).not.toHaveBeenCalled();
     expect(download).not.toHaveBeenCalled();
   });
+
+  it('persists next even if cancelled after download', async () => {
+    const writeNext = vi.fn();
+    let cancelled = false;
+    const download = vi.fn(() => {
+      cancelled = true;
+    });
+    const blob = new Blob(['pdf'], { type: 'application/pdf' });
+
+    await deliverBatesOutputs({
+      outputs: [{ fileName: 'a-bates.pdf', blob }],
+      next: 55,
+      writeNext,
+      download,
+      zipOutputs: vi.fn(),
+      isCancelled: () => cancelled,
+    });
+
+    expect(download).toHaveBeenCalled();
+    expect(writeNext).toHaveBeenCalledWith(55);
+  });
+
+  it('does not persist next when cancelled before download', async () => {
+    const writeNext = vi.fn();
+    const download = vi.fn();
+    const blob = new Blob(['pdf'], { type: 'application/pdf' });
+
+    await expect(
+      deliverBatesOutputs({
+        outputs: [{ fileName: 'a-bates.pdf', blob }],
+        next: 12,
+        writeNext,
+        download,
+        zipOutputs: vi.fn(),
+        isCancelled: () => true,
+      })
+    ).rejects.toThrow('Cancelled');
+
+    expect(download).not.toHaveBeenCalled();
+    expect(writeNext).not.toHaveBeenCalled();
+  });
 });

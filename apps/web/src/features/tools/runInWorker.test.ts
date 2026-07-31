@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { runWorkerTask, WorkerCancelledError } from './runInWorker';
+import {
+  cancelAndAwait,
+  runWorkerTask,
+  WorkerCancelledError,
+} from './runInWorker';
 
 type Handler = ((event: MessageEvent) => void) | null;
 
@@ -59,5 +63,43 @@ describe('runWorkerTask cancel', () => {
     const started = Date.now();
     await expect(promise).rejects.toBeInstanceOf(WorkerCancelledError);
     expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it('cancelAndAwait settles without orphan rejection', async () => {
+    const { promise, cancel } = runWorkerTask<{ id: string }, { ok: true }>({
+      workerUrl: new URL('https://example.test/worker.js'),
+      request: { id: 't' },
+      timeoutMs: 60_000,
+    });
+    await expect(cancelAndAwait(cancel, promise)).rejects.toBeInstanceOf(
+      WorkerCancelledError
+    );
+  });
+
+  it('double cancel is idempotent', async () => {
+    const { promise, cancel } = runWorkerTask<{ id: string }, { ok: true }>({
+      workerUrl: new URL('https://example.test/worker.js'),
+      request: { id: 't' },
+      timeoutMs: 60_000,
+    });
+    cancel();
+    cancel();
+    await expect(promise).rejects.toBeInstanceOf(WorkerCancelledError);
+  });
+
+  it('suppresses progress after cancel', async () => {
+    const onProgress = vi.fn();
+    const { promise, cancel } = runWorkerTask<{ id: string }, { ok: true }>({
+      workerUrl: new URL('https://example.test/worker.js'),
+      request: { id: 't' },
+      timeoutMs: 60_000,
+      onProgress,
+    });
+    cancel();
+    FakeWorker.last?.onmessage?.({
+      data: { type: 'progress', current: 1, total: 2 },
+    } as MessageEvent);
+    await expect(promise).rejects.toBeInstanceOf(WorkerCancelledError);
+    expect(onProgress).not.toHaveBeenCalled();
   });
 });

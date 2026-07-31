@@ -5,7 +5,7 @@
  * Structural (non-raster) compress stays on compress.worker.ts.
  */
 
-import { ensurePdfJsWorker } from '@/lib/pdf/ensurePdfJsWorker';
+import { ensurePdfJsWorker, pdfJsGetDocumentInit } from '@/lib/pdf/ensurePdfJsWorker';
 import {
   compressPdf,
   type CompressSettings,
@@ -59,10 +59,7 @@ self.onmessage = async (event: MessageEvent<CompressRasterWorkerRequest>) => {
   try {
     const pdfjs = await import('pdfjs-dist');
     ensurePdfJsWorker(pdfjs);
-    const task = pdfjs.getDocument({
-      data: bytes.slice(0),
-      isEvalSupported: false,
-    });
+    const task = pdfjs.getDocument(pdfJsGetDocumentInit(bytes));
     const pdfjsDoc = await task.promise;
     try {
       const result = await compressPdf({

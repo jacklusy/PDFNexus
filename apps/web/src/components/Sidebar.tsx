@@ -324,8 +324,9 @@ export default function Sidebar({
           <ShieldAlert className="h-3.5 w-3.5 text-teal-700" /> Preservation Mode
         </h4>
         <p className="text-[11px] leading-relaxed text-slate-500">
-          Original resolution, embedded fonts, and vector data are kept fully intact.
-          No quality loss will occur during page assembly.
+          Original resolution, embedded fonts, and vector data are kept intact where
+          possible during page assembly. Some operations (compress, raster export) may
+          reduce quality by design.
         </p>
       </div>
     </div>

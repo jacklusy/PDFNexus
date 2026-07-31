@@ -1,17 +1,30 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { detectTablesViaOcr } from './ocrTables';
 
-vi.mock('../pdf-to-images/pdfToImages', () => ({
-  pdfToImages: vi.fn(async () => ({
+const pdfToImagesMock = vi.fn(async (opts: { signal?: AbortSignal }) => {
+  if (opts.signal?.aborted) {
+    const err = new Error('Cancelled');
+    err.name = 'AbortError';
+    throw err;
+  }
+  return {
     files: [
       { fileName: 'p1.jpg', blob: new Blob(['x'], { type: 'image/jpeg' }) },
       { fileName: 'p2.jpg', blob: new Blob(['y'], { type: 'image/jpeg' }) },
     ],
-  })),
+  };
+});
+
+vi.mock('../pdf-to-images/pdfToImages', () => ({
+  pdfToImages: (opts: { signal?: AbortSignal }) => pdfToImagesMock(opts),
 }));
 
 vi.mock('@/lib/pdf/ensurePdfJsWorker', () => ({
   ensurePdfJsWorker: vi.fn(),
+  pdfJsGetDocumentInit: (data: ArrayBuffer) => ({
+    data,
+    isEvalSupported: false as const,
+  }),
 }));
 
 vi.mock('pdfjs-dist', () => ({
@@ -27,17 +40,39 @@ vi.mock('pdfjs-dist', () => ({
 describe('detectTablesViaOcr abort', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
-  it('stops further fetch calls when aborted mid-loop', async () => {
+  it('does not fetch when aborted before OCR loop', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const ac = new AbortController();
+    ac.abort();
+
+    await expect(
+      detectTablesViaOcr({
+        bytes: new ArrayBuffer(8),
+        pages: [1, 2],
+        signal: ac.signal,
+      })
+    ).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('stops after first fetch when aborted mid-loop', async () => {
+    let call = 0;
+    const ac = new AbortController();
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      call += 1;
+      if (call === 1) {
+        queueMicrotask(() => ac.abort());
+      }
       if (init?.signal?.aborted) {
         const err = new Error('aborted');
         err.name = 'AbortError';
         throw err;
       }
-      // Abort after first successful response scheduling
       return {
         ok: true,
         json: async () => ({ success: true, layout: { elements: [] } }),
@@ -45,19 +80,14 @@ describe('detectTablesViaOcr abort', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const ac = new AbortController();
-    const run = detectTablesViaOcr({
-      bytes: new ArrayBuffer(8),
-      pages: [1, 2],
-      signal: ac.signal,
-    });
+    await expect(
+      detectTablesViaOcr({
+        bytes: new ArrayBuffer(8),
+        pages: [1, 2],
+        signal: ac.signal,
+      })
+    ).rejects.toMatchObject({ name: 'AbortError' });
 
-    // Abort after microtasks so first fetch may start, then stop.
-    await Promise.resolve();
-    ac.abort();
-
-    await expect(run).rejects.toMatchObject({ name: 'AbortError' });
-    // At most one in-flight page should have been requested after abort.
-    expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(fetchMock.mock.calls.length).toBe(1);
   });
 });
