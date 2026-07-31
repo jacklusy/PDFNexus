@@ -161,7 +161,9 @@ export function BatesTool() {
         writeNext: writeStoredNext,
         download: downloadBlobLocally,
         zipOutputs,
+        isCancelled: () => cancelledRef.current,
       });
+      if (cancelledRef.current) throw new Error('Cancelled');
       setStart(next);
       setProgress(
         `Downloaded ${outputs.length} file(s). Next number saved as ${next} for continuity.`

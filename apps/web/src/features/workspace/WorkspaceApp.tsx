@@ -1159,7 +1159,7 @@ export default function WorkspaceApp() {
                 <FilePlus2 className="h-3.5 w-3.5" /> Select Files / Images From Device
               </button>
               <p className="mt-4 max-w-xs text-[10px] leading-normal text-slate-400">
-                No quality loss. Merge and page edits run in your browser — download anytime without email verification.
+                Merge and page edits run in your browser — download anytime without email verification.
               </p>
             </div>
           ) : (

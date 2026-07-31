@@ -4,62 +4,18 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/shared/ui/Button';
 import { downloadBlobLocally } from '@/features/files/localDownload';
 import { formatTransferBytes } from '@/features/transfer/transferFormat';
-import { ensurePdfWorker } from '@/lib/pdf/pdfHelpers';
 import { loadReadablePdf } from '../assertPdfReadable';
 import { ToolWorkbench, type ToolFile } from '../ToolWorkbench';
 import { ToolError } from '../ToolError';
 import { ToolProgress } from '../ToolProgress';
 import { useTimedProgress } from '../useTimedProgress';
+import { softLargePdfHint } from '../softLargePdfHint';
 import {
-  compressPdf,
   settingsForPreset,
   type CompressPreset,
   type CompressResult,
 } from './compressPdf';
 import { runWorkerTask, WorkerCancelledError } from '../runInWorker';
-import type { PDFDocumentProxy } from 'pdfjs-dist';
-
-async function openPdfjsDoc(pdfBytes: ArrayBuffer): Promise<PDFDocumentProxy> {
-  const pdfjs = await import('pdfjs-dist');
-  ensurePdfWorker(pdfjs);
-  const task = pdfjs.getDocument({
-    data: pdfBytes.slice(0),
-    isEvalSupported: false,
-  });
-  return task.promise;
-}
-
-async function renderPageJpegFromDoc(
-  doc: PDFDocumentProxy,
-  pageIndex: number,
-  maxPx: number,
-  quality: number
-): Promise<{ jpeg: Uint8Array; width: number; height: number }> {
-  const page = await doc.getPage(pageIndex + 1);
-  const base = page.getViewport({ scale: 1 });
-  const scale = Math.min(1, maxPx / Math.max(base.width, base.height));
-  const viewport = page.getViewport({ scale: Math.max(scale, 0.2) });
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.floor(viewport.width));
-  canvas.height = Math.max(1, Math.floor(viewport.height));
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Canvas unavailable');
-  await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-  const blob: Blob = await new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error('JPEG encode failed'))),
-      'image/jpeg',
-      quality
-    );
-  });
-  const width = canvas.width;
-  const height = canvas.height;
-  // Release GPU/canvas memory promptly
-  canvas.width = 0;
-  canvas.height = 0;
-  const buf = new Uint8Array(await blob.arrayBuffer());
-  return { jpeg: buf, width, height };
-}
 
 export function CompressTool() {
   const [files, setFiles] = useState<ToolFile[]>([]);
@@ -74,12 +30,12 @@ export function CompressTool() {
   const [progressCurrent, setProgressCurrent] = useState(0);
   const [progressTotal, setProgressTotal] = useState(0);
   const [stats, setStats] = useState<CompressResult | null>(null);
-  const pdfjsRef = useRef<PDFDocumentProxy | null>(null);
   const cancelledRef = useRef(false);
   const cancelWorkerRef = useRef<(() => void) | null>(null);
   const { elapsedLabel } = useTimedProgress(busy);
 
   const file = files[0]?.file;
+  const sizeHint = file ? softLargePdfHint(file.size) : null;
   const settings = useMemo(
     () =>
       settingsForPreset(preset, {
@@ -95,7 +51,6 @@ export function CompressTool() {
     (async () => {
       if (!file) {
         setPageCount(0);
-        setStats(null);
         return;
       }
       try {
@@ -121,78 +76,63 @@ export function CompressTool() {
     setBusy(true);
     setError(null);
     setStats(null);
-    setProgress('Starting…');
+    setProgress('Reading…');
     setProgressCurrent(0);
     setProgressTotal(0);
-    let pdfjsDoc: PDFDocumentProxy | null = null;
     try {
       const bytes = await file.arrayBuffer();
+      if (cancelledRef.current) throw new WorkerCancelledError();
 
-      // Structural path runs in a module worker; JPEG raster stays on main (canvas).
-      if (!rasterize) {
-        const { promise, cancel } = runWorkerTask<
-          { id: string; bytes: ArrayBuffer; settings: typeof settings },
-          {
-            bytes: ArrayBuffer;
-            originalSize: number;
-            finalSize: number;
-            reductionPercent: number;
-            elapsedMs: number;
-            settings: typeof settings;
-            imagesReencoded: number;
-          }
-        >({
-          workerUrl: new URL('./compress.worker.ts', import.meta.url),
-          request: { id: 'compress', bytes, settings },
-          transfer: [bytes],
-          onProgress: (c, t, msg) => {
-            setProgressCurrent(c);
-            setProgressTotal(t);
-            setProgress(msg || `${c}/${t}`);
-          },
-        });
-        cancelWorkerRef.current = cancel;
-        const workerResult = await promise;
-        const result: CompressResult = {
-          bytes: new Uint8Array(workerResult.bytes),
-          originalSize: workerResult.originalSize,
-          finalSize: workerResult.finalSize,
-          reductionPercent: workerResult.reductionPercent,
-          elapsedMs: workerResult.elapsedMs,
-          settings: workerResult.settings,
-          imagesReencoded: workerResult.imagesReencoded,
-        };
-        setStats(result);
-        const name = file.name.replace(/\.pdf$/i, '') + '-compressed.pdf';
-        downloadBlobLocally(
-          new Blob([result.bytes], { type: 'application/pdf' }),
-          name
-        );
-        setProgress('Downloaded');
-        setProgressCurrent(0);
-        setProgressTotal(0);
-        return;
-      }
+      // Structural + JPEG raster both run in module workers.
+      const workerUrl = rasterize
+        ? new URL('./compress-raster.worker.ts', import.meta.url)
+        : new URL('./compress.worker.ts', import.meta.url);
 
-      pdfjsDoc = await openPdfjsDoc(bytes);
-      pdfjsRef.current = pdfjsDoc;
-      const result = await compressPdf({
-        bytes,
-        settings,
-        rasterizePages: true,
-        renderPage: async (pageIndex, maxPx, quality) => {
-          if (cancelledRef.current) throw new Error('Cancelled');
-          if (!pdfjsDoc) throw new Error('PDF.js document missing');
-          return renderPageJpegFromDoc(pdfjsDoc, pageIndex, maxPx, quality);
-        },
+      let cancelWorker: (() => void) | null = null;
+      cancelWorkerRef.current = () => {
+        cancelledRef.current = true;
+        cancelWorker?.();
+      };
+      if (cancelledRef.current) throw new WorkerCancelledError();
+
+      setProgress(rasterize ? 'Re-encoding pages…' : 'Compressing…');
+      const { promise, cancel } = runWorkerTask<
+        { id: string; bytes: ArrayBuffer; settings: typeof settings },
+        {
+          bytes: ArrayBuffer;
+          originalSize: number;
+          finalSize: number;
+          reductionPercent: number;
+          elapsedMs: number;
+          settings: typeof settings;
+          imagesReencoded: number;
+        }
+      >({
+        workerUrl,
+        request: { id: 'compress', bytes, settings },
+        transfer: [bytes],
         onProgress: (c, t, msg) => {
-          if (cancelledRef.current) throw new Error('Cancelled');
           setProgressCurrent(c);
           setProgressTotal(t);
           setProgress(msg || `${c}/${t}`);
         },
       });
-      if (cancelledRef.current) throw new Error('Cancelled');
+      cancelWorker = cancel;
+      if (cancelledRef.current) {
+        cancel();
+        throw new WorkerCancelledError();
+      }
+      const workerResult = await promise;
+      if (cancelledRef.current) throw new WorkerCancelledError();
+      const result: CompressResult = {
+        bytes: new Uint8Array(workerResult.bytes),
+        originalSize: workerResult.originalSize,
+        finalSize: workerResult.finalSize,
+        reductionPercent: workerResult.reductionPercent,
+        elapsedMs: workerResult.elapsedMs,
+        settings: workerResult.settings,
+        imagesReencoded: workerResult.imagesReencoded,
+      };
       setStats(result);
       const name = file.name.replace(/\.pdf$/i, '') + '-compressed.pdf';
       downloadBlobLocally(
@@ -214,10 +154,6 @@ export function CompressTool() {
       setProgressTotal(0);
     } finally {
       cancelWorkerRef.current = null;
-      if (pdfjsDoc) {
-        await pdfjsDoc.destroy().catch(() => undefined);
-        pdfjsRef.current = null;
-      }
       setBusy(false);
     }
   };
@@ -225,7 +161,7 @@ export function CompressTool() {
   return (
     <ToolWorkbench
       title="Compress PDF"
-      description="Reduce file size locally. Sizes shown are measured after processing — not estimates."
+      description="Reduce file size locally. Sizes shown are measured after processing — not estimates. JPEG re-encode runs in a background worker."
       files={files}
       onFilesChange={setFiles}
       busy={busy}
@@ -240,29 +176,31 @@ export function CompressTool() {
         </Button>
       }
     >
+      {sizeHint ? (
+        <p className="text-sm text-[var(--color-muted)]" role="note">
+          {sizeHint}
+        </p>
+      ) : null}
+      {pageCount > 0 ? (
+        <p className="text-sm text-[var(--color-muted)]">{pageCount} page(s)</p>
+      ) : null}
+
       <fieldset className="space-y-2">
-        <legend className="text-sm font-semibold text-[var(--color-ink)]">Preset</legend>
+        <legend className="text-sm font-semibold">Preset</legend>
         <div className="flex flex-wrap gap-2">
-          {(
-            [
-              ['low', 'Low · higher quality'],
-              ['balanced', 'Balanced'],
-              ['high', 'High · smaller'],
-              ['custom', 'Custom'],
-            ] as const
-          ).map(([value, label]) => (
+          {(['low', 'balanced', 'high', 'custom'] as const).map((p) => (
             <label
-              key={value}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm"
+              key={p}
+              className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm capitalize"
             >
               <input
                 type="radio"
                 name="compress-preset"
-                checked={preset === value}
-                onChange={() => setPreset(value)}
+                checked={preset === p}
+                onChange={() => setPreset(p)}
                 disabled={busy}
               />
-              {label}
+              {p}
             </label>
           ))}
         </div>
@@ -276,7 +214,7 @@ export function CompressTool() {
               type="number"
               min={400}
               max={4000}
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2"
+              className="mt-1 w-full rounded-lg border px-3 py-2"
               value={maxImagePx}
               onChange={(e) => setMaxImagePx(Number(e.target.value) || 1600)}
               disabled={busy}
@@ -286,33 +224,34 @@ export function CompressTool() {
             <span className="font-medium">JPEG quality (%)</span>
             <input
               type="number"
-              min={30}
+              min={40}
               max={95}
-              className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2"
+              className="mt-1 w-full rounded-lg border px-3 py-2"
               value={jpegQuality}
               onChange={(e) => setJpegQuality(Number(e.target.value) || 72)}
               disabled={busy}
             />
           </label>
         </div>
-      ) : null}
+      ) : (
+        <p className="text-xs text-[var(--color-muted)]">
+          Target ~{settings.maxImagePx}px / {Math.round(settings.jpegQuality * 100)}% JPEG
+        </p>
+      )}
 
-      <label className="flex items-center gap-2 text-sm">
+      <label className="flex items-start gap-2 text-sm">
         <input
           type="checkbox"
+          className="mt-1"
           checked={rasterize}
           onChange={(e) => setRasterize(e.target.checked)}
           disabled={busy}
         />
-        Re-encode pages as images (stronger compression; text becomes image)
+        <span>
+          Re-encode pages as JPEG (stronger compression; quality loss). When off, only
+          structural compression runs.
+        </span>
       </label>
-
-      {file && pageCount > 0 ? (
-        <p className="text-sm text-[var(--color-muted)]">
-          Source: {formatTransferBytes(file.size)} · {pageCount} pages · settings:{' '}
-          {settings.maxImagePx}px / {Math.round(settings.jpegQuality * 100)}% JPEG
-        </p>
-      ) : null}
 
       {stats ? (
         <dl className="grid grid-cols-2 gap-2 rounded-xl bg-[var(--color-surface-2)] p-3 text-sm sm:grid-cols-4">
@@ -343,7 +282,7 @@ export function CompressTool() {
               ? Math.round((progressCurrent / progressTotal) * 100)
               : null
           }
-          currentPage={progressTotal > 0 ? progressCurrent : undefined}
+          currentPage={progressTotal > 0 ? Math.max(1, progressCurrent) : undefined}
           totalPages={progressTotal > 0 ? progressTotal : undefined}
           elapsedLabel={elapsedLabel}
           onCancel={() => {
@@ -355,14 +294,7 @@ export function CompressTool() {
         <p className="text-sm text-[var(--color-muted)]">{progress}</p>
       ) : null}
       {error ? (
-        <ToolError
-          message={error}
-          fileName={file?.name}
-          onRetry={() => {
-            setError(null);
-            void run();
-          }}
-        />
+        <ToolError message={error} fileName={file?.name} onRetry={() => { setError(null); void run(); }} />
       ) : null}
     </ToolWorkbench>
   );

@@ -46,10 +46,21 @@ export async function detectTablesViaOcr(options: {
   /** 1-based page numbers; defaults to first 5 pages. */
   pages?: number[];
   onProgress?: (msg: string) => void;
+  signal?: AbortSignal;
 }): Promise<DetectedTable[]> {
+  const throwIfAborted = () => {
+    if (options.signal?.aborted) {
+      const err = new Error('Cancelled');
+      err.name = 'AbortError';
+      throw err;
+    }
+  };
+  throwIfAborted();
+
   const pdfjs = await import('pdfjs-dist');
-  const { ensurePdfWorker } = await import('@/lib/pdf/pdfHelpers');
-  ensurePdfWorker(pdfjs);
+  const { ensurePdfJsWorker } = await import('@/lib/pdf/ensurePdfJsWorker');
+  ensurePdfJsWorker(pdfjs);
+  throwIfAborted();
   const task = pdfjs.getDocument({
     data: options.bytes.slice(0),
     isEvalSupported: false,
@@ -65,6 +76,7 @@ export async function detectTablesViaOcr(options: {
     await doc.destroy();
   }
 
+  throwIfAborted();
   options.onProgress?.('Rendering pages for OCR…');
   const images = await pdfToImages({
     bytes: options.bytes,
@@ -80,16 +92,19 @@ export async function detectTablesViaOcr(options: {
   const tables: DetectedTable[] = [];
   let failures = 0;
   for (let i = 0; i < images.files.length; i++) {
+    throwIfAborted();
     const pageNum = pageList[i];
     options.onProgress?.(
       `OCR page ${pageNum} (${i + 1}/${images.files.length})…`
     );
     const imageBase64 = await blobToJpegBase64(images.files[i].blob);
+    throwIfAborted();
     try {
       const res = await fetch(`${getApiBase()}/api/pdf-to-docx/analyze-ocr`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        signal: options.signal,
         body: JSON.stringify({ imageBase64, pageNumber: pageNum }),
       });
       if (!res.ok) {
@@ -100,10 +115,19 @@ export async function detectTablesViaOcr(options: {
       if (json.success && json.layout) {
         tables.push(...tablesFromLayout(pageNum, json.layout));
       }
-    } catch {
+    } catch (e) {
+      if (
+        options.signal?.aborted ||
+        (e instanceof Error && (e.name === 'AbortError' || e.message === 'Cancelled'))
+      ) {
+        throw e instanceof Error && e.name === 'AbortError'
+          ? e
+          : Object.assign(new Error('Cancelled'), { name: 'AbortError' });
+      }
       failures += 1;
     }
   }
+  throwIfAborted();
   if (failures === images.files.length && tables.length === 0) {
     throw new Error(
       'OCR failed for every page (network, rate limit, or API error). Try again or use local text-layer detection.'

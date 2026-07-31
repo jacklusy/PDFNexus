@@ -6,11 +6,11 @@
 import { PDFDocument, degrees } from 'pdf-lib';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PDFPageItem, PDFFile, FileStore } from '@/lib/types';
+import { ensurePdfJsWorker } from './ensurePdfJsWorker';
 
 type PdfjsModule = typeof import('pdfjs-dist');
 
 let pdfjsLib: PdfjsModule | null = null;
-let workerConfigured = false;
 
 async function getPdfjs(): Promise<PdfjsModule> {
   if (typeof window === 'undefined') {
@@ -24,17 +24,7 @@ async function getPdfjs(): Promise<PdfjsModule> {
 }
 
 export function ensurePdfWorker(lib?: PdfjsModule): void {
-  if (workerConfigured) return;
-  try {
-    const pdfjs = lib || pdfjsLib;
-    if (!pdfjs) return;
-    // Served from /public (copied by scripts/copy-pdf-worker.mjs) — not webpack/SWC.
-    // Also used from module workers (no `window`); same-origin path still resolves.
-    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-    workerConfigured = true;
-  } catch (e) {
-    console.error('Failed to configure PDFJS worker:', e);
-  }
+  ensurePdfJsWorker(lib || pdfjsLib);
 }
 
 function generateId(): string {

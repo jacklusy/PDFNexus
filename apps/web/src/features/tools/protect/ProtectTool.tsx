@@ -214,6 +214,7 @@ export function ProtectTool() {
           elapsedLabel={elapsedLabel}
           onCancel={() => {
             cancelledRef.current = true;
+            setProgress('Cancelling after current step…');
           }}
         />
       ) : progress && !busy ? (

@@ -4,10 +4,15 @@
  * module worker (OffscreenCanvas). ZIP stays on the main thread.
  */
 
-import { ensurePdfWorker } from '@/lib/pdf/pdfHelpers';
+import { ensurePdfJsWorker } from '@/lib/pdf/ensurePdfJsWorker';
 import { zipOutputs } from '../zipOutputs';
 
 export type ImageExportFormat = 'image/jpeg' | 'image/png' | 'image/webp';
+
+/** Hard cap for render scale (UI suggests 0.5–4). */
+export const PDF_TO_IMAGES_MAX_SCALE = 4;
+/** Max canvas edge in CSS pixels to reduce OOM risk. */
+export const PDF_TO_IMAGES_MAX_EDGE_PX = 4096;
 
 export interface PdfToImagesOptions {
   bytes: ArrayBuffer;
@@ -40,6 +45,30 @@ function extFor(format: ImageExportFormat): string {
   if (format === 'image/png') return 'png';
   if (format === 'image/webp') return 'webp';
   return 'jpg';
+}
+
+export function clampPdfToImagesScale(scale: number): number {
+  if (!Number.isFinite(scale) || scale <= 0) return 1;
+  return Math.min(PDF_TO_IMAGES_MAX_SCALE, Math.max(0.25, scale));
+}
+
+export function clampCanvasEdge(
+  width: number,
+  height: number,
+  maxEdge = PDF_TO_IMAGES_MAX_EDGE_PX
+): { width: number; height: number; scaleFactor: number } {
+  const w = Math.max(1, Math.floor(width));
+  const h = Math.max(1, Math.floor(height));
+  const longest = Math.max(w, h);
+  if (longest <= maxEdge) {
+    return { width: w, height: h, scaleFactor: 1 };
+  }
+  const scaleFactor = maxEdge / longest;
+  return {
+    width: Math.max(1, Math.floor(w * scaleFactor)),
+    height: Math.max(1, Math.floor(h * scaleFactor)),
+    scaleFactor,
+  };
 }
 
 function pageFileName(
@@ -103,7 +132,8 @@ export async function pdfToImageBuffers(
   options: PdfToImagesOptions
 ): Promise<PdfToImagesBuffersResult> {
   const pdfjs = await import('pdfjs-dist');
-  ensurePdfWorker(pdfjs);
+  ensurePdfJsWorker(pdfjs);
+  const scale = clampPdfToImagesScale(options.scale);
   const task = pdfjs.getDocument({
     data: options.bytes.slice(0),
     isEvalSupported: false,
@@ -116,42 +146,50 @@ export async function pdfToImageBuffers(
       const pageNum = options.pages[i];
       options.onProgress?.(i, options.pages.length);
       const page = await doc.getPage(pageNum);
-      const viewport = page.getViewport({ scale: options.scale });
-      const width = Math.max(1, Math.floor(viewport.width));
-      const height = Math.max(1, Math.floor(viewport.height));
-      const canvas = createRenderCanvas(width, height);
-      const ctx = canvas.getContext('2d') as
-        | CanvasRenderingContext2D
-        | OffscreenCanvasRenderingContext2D
-        | null;
-      if (!ctx) throw new Error('Canvas unavailable');
-      ctx.fillStyle = options.background;
-      ctx.fillRect(0, 0, width, height);
-      // pdf.js accepts both HTMLCanvasElement and OffscreenCanvas contexts.
-      await page.render({
-        canvasContext: ctx as CanvasRenderingContext2D,
-        viewport,
-        canvas: canvas as HTMLCanvasElement,
-      }).promise;
-      const bytes = await canvasToArrayBuffer(
-        canvas,
-        options.format,
-        options.quality
-      );
-      if ('width' in canvas) {
-        (canvas as HTMLCanvasElement | OffscreenCanvas).width = 0;
-        (canvas as HTMLCanvasElement | OffscreenCanvas).height = 0;
+      try {
+        const baseViewport = page.getViewport({ scale });
+        const clamped = clampCanvasEdge(baseViewport.width, baseViewport.height);
+        const viewport =
+          clamped.scaleFactor === 1
+            ? baseViewport
+            : page.getViewport({ scale: scale * clamped.scaleFactor });
+        const width = clamped.width;
+        const height = clamped.height;
+        const canvas = createRenderCanvas(width, height);
+        const ctx = canvas.getContext('2d') as
+          | CanvasRenderingContext2D
+          | OffscreenCanvasRenderingContext2D
+          | null;
+        if (!ctx) throw new Error('Canvas unavailable');
+        ctx.fillStyle = options.background;
+        ctx.fillRect(0, 0, width, height);
+        await page.render({
+          canvasContext: ctx as CanvasRenderingContext2D,
+          viewport,
+          canvas: canvas as HTMLCanvasElement,
+        }).promise;
+        const bytes = await canvasToArrayBuffer(
+          canvas,
+          options.format,
+          options.quality
+        );
+        if ('width' in canvas) {
+          (canvas as HTMLCanvasElement | OffscreenCanvas).width = 0;
+          (canvas as HTMLCanvasElement | OffscreenCanvas).height = 0;
+        }
+        files.push({
+          fileName: pageFileName(
+            options.namePattern,
+            options.baseName,
+            pageNum,
+            options.format
+          ),
+          bytes,
+          mimeType: options.format,
+        });
+      } finally {
+        page.cleanup();
       }
-      files.push({
-        fileName: pageFileName(
-          options.namePattern,
-          options.baseName,
-          pageNum,
-          options.format
-        ),
-        bytes,
-        mimeType: options.format,
-      });
     }
     options.onProgress?.(options.pages.length, options.pages.length);
   } finally {

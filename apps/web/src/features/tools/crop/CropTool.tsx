@@ -332,6 +332,7 @@ export function CropTool() {
           elapsedLabel={elapsedLabel}
           onCancel={() => {
             cancelledRef.current = true;
+            setProgress('Cancelling after current step…');
           }}
         />
       ) : progress && !busy ? (

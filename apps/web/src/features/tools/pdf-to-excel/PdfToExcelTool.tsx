@@ -25,12 +25,16 @@ export function PdfToExcelTool() {
   const [detectKey, setDetectKey] = useState(0);
   const [ocrBusy, setOcrBusy] = useState(false);
   const ocrGuardRef = React.useRef(createGenerationGuard());
+  const ocrAbortRef = React.useRef<AbortController | null>(null);
 
   const file = files[0]?.file;
 
   useEffect(() => {
-    // Invalidate any in-flight OCR when the source file changes.
-    ocrGuardRef.current.bump();
+    // Invalidate any in-flight OCR / detect when the source file changes.
+    ocrAbortRef.current?.abort();
+    ocrAbortRef.current = null;
+    setOcrBusy(false);
+    const detectGen = ocrGuardRef.current.bump();
     let cancelled = false;
     (async () => {
       if (!file) {
@@ -46,7 +50,7 @@ export function PdfToExcelTool() {
         await loadReadablePdf(await file.arrayBuffer());
         const bytes = await file.arrayBuffer();
         const found = await detectTables(bytes);
-        if (cancelled) return;
+        if (cancelled || !ocrGuardRef.current.isCurrent(detectGen)) return;
         setTables(found);
         setSelected(new Set(found.map((_, i) => i)));
         setProgress(
@@ -55,16 +59,20 @@ export function PdfToExcelTool() {
             : 'No tables detected from text layer'
         );
       } catch (e) {
-        if (!cancelled) {
+        if (!cancelled && ocrGuardRef.current.isCurrent(detectGen)) {
           setError(e instanceof Error ? e.message : String(e));
           setProgress(null);
         }
       } finally {
-        if (!cancelled) setBusy(false);
+        if (!cancelled && ocrGuardRef.current.isCurrent(detectGen)) {
+          setBusy(false);
+        }
       }
     })();
     return () => {
       cancelled = true;
+      ocrAbortRef.current?.abort();
+      ocrAbortRef.current = null;
     };
   }, [file, detectKey]);
 
@@ -79,6 +87,9 @@ export function PdfToExcelTool() {
 
   const runOcrDetect = async () => {
     if (!canRunOcrTableDetect(ocrConsent, Boolean(file)) || !file) return;
+    ocrAbortRef.current?.abort();
+    const ac = new AbortController();
+    ocrAbortRef.current = ac;
     const gen = ocrGuardRef.current.bump();
     const sourceFile = file;
     setBusy(true);
@@ -87,13 +98,15 @@ export function PdfToExcelTool() {
     setLastAction('ocr');
     try {
       const bytes = await sourceFile.arrayBuffer();
+      if (ac.signal.aborted) return;
       const found = await detectTablesViaOcr({
         bytes,
+        signal: ac.signal,
         onProgress: (msg) => {
           if (ocrGuardRef.current.isCurrent(gen)) setProgress(msg);
         },
       });
-      if (!ocrGuardRef.current.isCurrent(gen)) return;
+      if (!ocrGuardRef.current.isCurrent(gen) || ac.signal.aborted) return;
       setTables(found);
       setSelected(new Set(found.map((_, i) => i)));
       setProgress(
@@ -102,14 +115,20 @@ export function PdfToExcelTool() {
           : 'OCR returned no tables'
       );
     } catch (e) {
+      if (
+        ac.signal.aborted ||
+        (e instanceof Error && (e.name === 'AbortError' || e.message === 'Cancelled'))
+      ) {
+        return;
+      }
       if (!ocrGuardRef.current.isCurrent(gen)) return;
       setError(e instanceof Error ? e.message : String(e));
       setProgress(null);
     } finally {
-      if (ocrGuardRef.current.isCurrent(gen)) {
-        setBusy(false);
-        setOcrBusy(false);
-      }
+      // Always clear busy flags so cloud_assisted does not stick after invalidate.
+      setBusy(false);
+      setOcrBusy(false);
+      if (ocrAbortRef.current === ac) ocrAbortRef.current = null;
     }
   };
 
@@ -153,6 +172,9 @@ export function PdfToExcelTool() {
         setOcrConsent(false);
         setError(null);
         setProgress(null);
+        setOcrBusy(false);
+        ocrAbortRef.current?.abort();
+        ocrAbortRef.current = null;
       }}
       busy={busy}
       processingMode={ocrBusy ? 'cloud_assisted' : 'partial'}

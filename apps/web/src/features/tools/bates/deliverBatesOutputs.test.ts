@@ -43,4 +43,32 @@ describe('deliverBatesOutputs', () => {
     expect(writeNext).not.toHaveBeenCalled();
     expect(download).not.toHaveBeenCalled();
   });
+
+  it('does not persist next when cancelled during zip', async () => {
+    const writeNext = vi.fn();
+    const download = vi.fn();
+    const zipOutputs = vi.fn().mockImplementation(async () => {
+      cancelled = true;
+      return new Blob(['zip']);
+    });
+    let cancelled = false;
+    const blob = new Blob(['pdf'], { type: 'application/pdf' });
+
+    await expect(
+      deliverBatesOutputs({
+        outputs: [
+          { fileName: 'a-bates.pdf', blob },
+          { fileName: 'b-bates.pdf', blob },
+        ],
+        next: 7,
+        writeNext,
+        download,
+        zipOutputs,
+        isCancelled: () => cancelled,
+      })
+    ).rejects.toThrow('Cancelled');
+
+    expect(writeNext).not.toHaveBeenCalled();
+    expect(download).not.toHaveBeenCalled();
+  });
 });

@@ -174,11 +174,12 @@ export function PdfToHtmlTool() {
               ? Math.round((progressCurrent / progressTotal) * 100)
               : null
           }
-          currentPage={progressTotal > 0 ? progressCurrent : undefined}
+          currentPage={progressTotal > 0 ? Math.min(progressCurrent + 1, progressTotal) : undefined}
           totalPages={progressTotal > 0 ? progressTotal : undefined}
           elapsedLabel={elapsedLabel}
           onCancel={() => {
             cancelledRef.current = true;
+            setProgress('Cancelling after current step…');
           }}
         />
       ) : progress && !busy ? (

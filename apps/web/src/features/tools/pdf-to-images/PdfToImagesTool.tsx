@@ -79,7 +79,7 @@ export function PdfToImagesTool() {
         rejectOverlaps: true,
       });
       const bytes = await file.arrayBuffer();
-      // Cancel during arrayBuffer is a soft no-op until after the read (parity Split/Extract).
+      // Cancel during arrayBuffer is checked after the read (parity Split/Extract).
       if (cancelledBeforeWorkerRef.current) {
         throw new WorkerCancelledError();
       }
@@ -95,6 +95,14 @@ export function PdfToImagesTool() {
         namePattern,
         baseName,
       };
+      let cancelWorker: (() => void) | null = null;
+      cancelRef.current = () => {
+        cancelledBeforeWorkerRef.current = true;
+        cancelWorker?.();
+      };
+      if (cancelledBeforeWorkerRef.current) {
+        throw new WorkerCancelledError();
+      }
       const { promise, cancel } = runWorkerTask<
         typeof request,
         {
@@ -110,18 +118,28 @@ export function PdfToImagesTool() {
           setProgress(`Rendering ${c}/${t}…`);
         },
       });
-      cancelRef.current = () => {
-        cancelledBeforeWorkerRef.current = true;
+      cancelWorker = cancel;
+      if (cancelledBeforeWorkerRef.current) {
         cancel();
-      };
+        throw new WorkerCancelledError();
+      }
       const result = await promise;
+      if (cancelledBeforeWorkerRef.current) {
+        throw new WorkerCancelledError();
+      }
       const named = result.files.map((f) => ({
         fileName: f.fileName,
         blob: new Blob([f.bytes], { type: f.mimeType }),
       }));
       if (named.length > 1) {
         setProgress('Building ZIP…');
+        if (cancelledBeforeWorkerRef.current) {
+          throw new WorkerCancelledError();
+        }
         const zip = await zipOutputs(named);
+        if (cancelledBeforeWorkerRef.current) {
+          throw new WorkerCancelledError();
+        }
         downloadBlobLocally(zip, `${baseName}-images.zip`);
       } else if (named[0]) {
         downloadBlobLocally(named[0].blob, named[0].fileName);
@@ -150,7 +168,11 @@ export function PdfToImagesTool() {
       title="PDF to images"
       description="Export pages as JPG, PNG, or WebP. Multi-page results download as a ZIP. Rendering runs in a background worker."
       files={files}
-      onFilesChange={setFiles}
+      onFilesChange={(next) => {
+        setFiles(next);
+        setError(null);
+        setProgress(null);
+      }}
       busy={busy}
       footer={
         <Button

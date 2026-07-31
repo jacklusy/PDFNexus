@@ -118,6 +118,16 @@ export function SplitTool() {
         fileName: names[i] || r.fileName,
       }));
 
+      // Wire cancel before starting so Cancel during setup terminates the worker.
+      let cancelWorker: (() => void) | null = null;
+      cancelRef.current = () => {
+        cancelledBeforeWorkerRef.current = true;
+        cancelWorker?.();
+      };
+      if (cancelledBeforeWorkerRef.current) {
+        throw new WorkerCancelledError();
+      }
+
       const { promise, cancel } = runWorkerTask<
         { id: string; request: typeof request },
         { parts: Array<{ bytes: ArrayBuffer; fileName: string }> }
@@ -131,11 +141,15 @@ export function SplitTool() {
           setProgress(`Splitting ${c}/${t}…`);
         },
       });
-      cancelRef.current = () => {
-        cancelledBeforeWorkerRef.current = true;
+      cancelWorker = cancel;
+      if (cancelledBeforeWorkerRef.current) {
         cancel();
-      };
+        throw new WorkerCancelledError();
+      }
       const result = await promise;
+      if (cancelledBeforeWorkerRef.current) {
+        throw new WorkerCancelledError();
+      }
       const named = result.parts.map((p, i) => ({
         fileName: plan[i]?.fileName || p.fileName || `part-${i + 1}.pdf`,
         blob: new Blob([p.bytes], { type: 'application/pdf' }),
@@ -145,7 +159,13 @@ export function SplitTool() {
         downloadBlobLocally(named[0].blob, named[0].fileName);
       } else {
         setProgress('Building ZIP…');
+        if (cancelledBeforeWorkerRef.current) {
+          throw new WorkerCancelledError();
+        }
         const zip = await zipOutputs(named);
+        if (cancelledBeforeWorkerRef.current) {
+          throw new WorkerCancelledError();
+        }
         downloadBlobLocally(zip, `${baseName(file.name)}-split.zip`);
       }
       setProgress(`Done — ${named.length} file${named.length === 1 ? '' : 's'}`);

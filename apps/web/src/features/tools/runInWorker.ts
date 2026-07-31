@@ -2,6 +2,7 @@
 
 /**
  * Run a module worker with progress + cancel via terminate.
+ * Cancel must settle the promise immediately (WorkerCancelledError), not wait for timeout.
  */
 export class WorkerCancelledError extends Error {
   constructor(message = 'Cancelled') {
@@ -20,32 +21,47 @@ export function runWorkerTask<TRequest, TResult>(options: {
   let worker: Worker | null = null;
   let settled = false;
   let cancelled = false;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let rejectFn: ((err: Error) => void) | null = null;
 
-  const cancel = () => {
-    cancelled = true;
+  const cleanupWorker = () => {
     if (worker) {
       worker.terminate();
       worker = null;
     }
   };
 
+  const clearTimer = () => {
+    if (timeoutId != null) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+  };
+
+  const cancel = () => {
+    cancelled = true;
+    cleanupWorker();
+    if (settled) return;
+    settled = true;
+    clearTimer();
+    rejectFn?.(new WorkerCancelledError());
+  };
+
   const promise = new Promise<TResult>((resolve, reject) => {
+    rejectFn = reject;
     worker = new Worker(options.workerUrl, { type: 'module' });
-    const timeout = window.setTimeout(() => {
+    timeoutId = setTimeout(() => {
       if (settled) return;
       settled = true;
-      cancel();
+      cleanupWorker();
       reject(new Error('Worker timed out'));
     }, options.timeoutMs ?? 180_000);
 
     const settleReject = (err: Error) => {
-      clearTimeout(timeout);
+      clearTimer();
       if (settled) return;
       settled = true;
-      if (worker) {
-        worker.terminate();
-        worker = null;
-      }
+      cleanupWorker();
       reject(cancelled ? new WorkerCancelledError() : err);
     };
 
@@ -57,13 +73,10 @@ export function runWorkerTask<TRequest, TResult>(options: {
         }
         return;
       }
-      clearTimeout(timeout);
+      clearTimer();
       if (settled) return;
       settled = true;
-      if (worker) {
-        worker.terminate();
-        worker = null;
-      }
+      cleanupWorker();
       if (cancelled) {
         reject(new WorkerCancelledError());
         return;
@@ -75,6 +88,12 @@ export function runWorkerTask<TRequest, TResult>(options: {
     worker.onerror = (err) => {
       settleReject(err.error ?? new Error(err.message || 'Worker error'));
     };
+
+    // If cancel raced before postMessage, don't start work.
+    if (cancelled) {
+      settleReject(new WorkerCancelledError());
+      return;
+    }
 
     worker.postMessage(options.request, options.transfer ?? []);
   });

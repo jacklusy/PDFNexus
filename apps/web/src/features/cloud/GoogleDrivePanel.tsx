@@ -39,6 +39,7 @@ export function GoogleDrivePanel({
   const [pickerHint, setPickerHint] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<
     | { kind: 'connect' }
+    | { kind: 'disconnect' }
     | { kind: 'list' }
     | { kind: 'import'; fileId: string; name: string }
     | { kind: 'picker' }
@@ -112,7 +113,7 @@ export function GoogleDrivePanel({
       setPickerHint(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
-      setLastAction({ kind: 'connect' });
+      setLastAction({ kind: 'disconnect' });
     } finally {
       setBusy(false);
     }
@@ -211,13 +212,22 @@ export function GoogleDrivePanel({
   };
 
   const retryLast = () => {
-    setError(null);
     if (!lastAction) return;
+    if (lastAction.kind === 'export') {
+      if (!canUseDriveExport(consent)) {
+        setError('Check the consent box, then use Retry to export again.');
+        return;
+      }
+      setError(null);
+      void exportToDrive();
+      return;
+    }
+    setError(null);
     if (lastAction.kind === 'connect') void connect();
+    else if (lastAction.kind === 'disconnect') void disconnect();
     else if (lastAction.kind === 'list') void loadAppFiles();
     else if (lastAction.kind === 'import') void importFile(lastAction.fileId, lastAction.name);
     else if (lastAction.kind === 'picker') void pickFromDrive();
-    else if (lastAction.kind === 'export') void exportToDrive();
   };
 
   return (

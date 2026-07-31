@@ -5,5 +5,9 @@ export function softLargePdfHint(byteLength: number): string | null {
   if (!Number.isFinite(byteLength) || byteLength < SOFT_LARGE_PDF_BYTES) {
     return null;
   }
-  return 'This PDF is large (about 80MB+). Processing may be slow or run out of memory in the browser.';
+  const mb = Math.round(byteLength / (1024 * 1024));
+  if (mb >= 150) {
+    return `This PDF is very large (~${mb}MB). Processing may be slow or run out of memory in the browser.`;
+  }
+  return `This PDF is large (~${mb}MB). Processing may be slow or run out of memory in the browser.`;
 }

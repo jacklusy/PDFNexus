@@ -103,6 +103,14 @@ export function ExtractTool() {
         throw new WorkerCancelledError();
       }
       const request = { bytes, pages: selected };
+      let cancelWorker: (() => void) | null = null;
+      cancelRef.current = () => {
+        cancelledBeforeWorkerRef.current = true;
+        cancelWorker?.();
+      };
+      if (cancelledBeforeWorkerRef.current) {
+        throw new WorkerCancelledError();
+      }
       const { promise, cancel } = runWorkerTask<
         { id: string; request: typeof request },
         { bytes: ArrayBuffer; pageCount: number }
@@ -116,11 +124,15 @@ export function ExtractTool() {
           setProgress(`Extracting ${c}/${t}…`);
         },
       });
-      cancelRef.current = () => {
-        cancelledBeforeWorkerRef.current = true;
+      cancelWorker = cancel;
+      if (cancelledBeforeWorkerRef.current) {
         cancel();
-      };
+        throw new WorkerCancelledError();
+      }
       const result = await promise;
+      if (cancelledBeforeWorkerRef.current) {
+        throw new WorkerCancelledError();
+      }
       const outName = file.name.replace(/\.pdf$/i, '') + '-extract.pdf';
       downloadBlobLocally(
         new Blob([result.bytes], { type: 'application/pdf' }),

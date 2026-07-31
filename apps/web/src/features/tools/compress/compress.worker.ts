@@ -2,7 +2,7 @@
 
 /**
  * Structural PDF compress (metadata strip + object streams) off the main thread.
- * Raster/JPEG paths stay on the main thread (canvas).
+ * JPEG raster re-encode uses compress-raster.worker.ts.
  */
 
 import { compressPdf, type CompressSettings } from './compressPdf';

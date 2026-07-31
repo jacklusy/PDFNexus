@@ -1,4 +1,4 @@
-# PDFNexus — Platform status (Phases 5–16)
+# PDFNexus — Platform status (Phases 5–19)
 
 **No healthcare or legal compliance claims.** Browser/a11y rows below are a **manual QA checklist**, not a claim that every cell was validated in CI.
 
@@ -22,43 +22,41 @@
 
 Local downloads remain ungated. Email verification is optional delivery only.
 
-## Phase 5–13 (summary)
+## Phase 5–16 (summary)
 
-See earlier sections in git history / prior docs. Highlights: cloud OAuth harden, ToolError rollout, extract worker, Add text & shapes honesty, capped cloud reads + `%PDF-` magic, CertSign/Protect clear-on-success, Bates load Retry, OneDrive basename.
+See earlier sections / prior docs. Highlights through 16: cloud harden, ToolError, extract + PDF→images workers, Bates continuity after deliver, ToolProgress rollout, soft size hint, honest manual QA templates.
 
-## Phase 14 (workers + leftovers)
+## Phase 17 (cancel + OCR abort)
 
-- Bates continuity: next number persisted **only after** successful single download or zip
-- PdfToExcel OCR: generation guard ignores stale results after file change; `cloud_assisted` only while OCR busy
-- Cloud specs: `application/x-pdf` + direct `cloudAppFolderBasename` cases
-- Extract worker posts via shared `extractWorkerOkMessage` / `extractWorkerErrMessage`
-- PDF→images: module worker (`pdf-to-images.worker.ts`) with OffscreenCanvas; ZIP/download on main thread
-- Soft large-PDF hint (≥~80MB) guidance helper introduced
+- `runWorkerTask` Cancel **settles immediately** with `WorkerCancelledError` (no 180s timeout-as-cancel)
+- Split / Extract / PDF→images / Compress: cancel wired before worker await; skip zip/download if cancelled after worker
+- Bates: `deliverBatesOutputs` respects `isCancelled` before `writeNext`
+- PdfToExcel OCR: `AbortSignal` on `fetch`; abort on file change / new OCR / unmount; always clear `ocrBusy`
 
-## Phase 15 (progress / cancel / copy)
+## Phase 18 (harden + JPEG raster worker)
 
-- `ToolProgress` (+ elapsed / Cancel where feasible) on Split, Extract, Flatten, Protect, Unlock, Crop, Resize, EPUB, HTML (plus existing Bates/images/compress paths)
-- Cancel flag checked **after** `arrayBuffer` before worker start (Split / Extract / PDF→images parity)
-- Workspace empty-state copy softened (no absolute “100% locally”)
-- Bates Apply disabled when `pageCount === 0` after failed load
-- Protect primary disabled when password empty/mismatch
-- Drive / Dropbox / OneDrive panels: ToolError **Retry** re-runs last connect/list/import/export (or picker)
+- Detect vs OCR share generation guard (neither overwrites the other when stale)
+- Cloud Retry: export requires consent (keeps error if unchecked); disconnect Retry re-runs disconnect
+- PDF→images: scale/edge clamps, `page.cleanup()`, slim `ensurePdfJsWorker` (no pdf-lib in worker import)
+- Soft-cancel tools: “Cancelling after current step…” honesty copy
+- EPUB/HTML: 1-based `currentPage` in ToolProgress
+- Workspace: removed absolute “No quality loss” claim
+- Compress JPEG raster: `compress-raster.worker.ts` (OffscreenCanvas); structural path remains `compress.worker.ts`
 
-## Phase 16 (evidence)
+## Phase 19 (evidence)
 
-- Targeted automated tests: Bates zip-fail continuity, OCR generation ignore, pdf-to-images worker ok/err contract, soft size hint
-- §19 / §20 remain **templates / manual QA** — no invented pass rates or CI-validated a11y/browser matrices
-- Still documented limits: JPEG raster compress **main-thread**; mid-batch AbortSignal not wired; §9 / CMS / DAG / full-library cloud OOS
+- Targeted tests: `runInWorker` prompt cancel, OCR abort stops fetch, Bates cancel-during-zip, images scale clamps
+- §19 / §20 remain **templates / manual QA** — no invented pass rates
+- Still documented limits: soft tools lack mid-op AbortSignal; §9 / CMS / DAG / full-library cloud OOS; measured perf/a11y manual only
 
 ## §19 Performance notes (templates / known limits)
 
 Numbers below are **design limits and patterns**, not measured CI benchmarks collected in-repo.
 
-- Prefer local tools; workers for structural compress / split / extract / merge / PDF→images where wired
-- Raster JPEG compress still uses main-thread canvas (cleared after encode) — **no new worker in 14–16**
-- Cloud imports/exports capped at **50MB** (enforced while reading the response body)
-- Soft UI hint around **80MB+** local PDFs (guidance only)
-- Batch cancel stops before the next pending job / after read before worker (not mid-runner AbortSignal)
+- Workers: structural compress, JPEG raster compress, split, extract, merge, PDF→images
+- Soft UI hint around **80MB+** local PDFs (guidance only; shows approximate MB)
+- Cloud imports/exports capped at **50MB**
+- Soft Cancel on Flatten/Protect/Unlock/Crop/Resize finishes the current await step, then stops
 
 ## §20 Browser / device matrix (manual QA — not CI-validated)
 
@@ -73,20 +71,21 @@ Numbers below are **design limits and patterns**, not measured CI benchmarks col
 
 | Check | Result |
 | --- | --- |
-| Split / Extract cancel after read | _not recorded_ |
-| PDF→images worker + zip | _not recorded_ |
-| Bates Apply disabled on bad load | _not recorded_ |
-| Cloud panel Retry | _not recorded_ |
+| Worker Cancel settles immediately (no timeout error) | _not recorded_ |
+| OCR abort on file change (no further uploads) | _not recorded_ |
+| JPEG compress raster worker | _not recorded_ |
+| Cloud export Retry without consent keeps error | _not recorded_ |
 
 ## Known limitations / remaining gaps
 
 - Full existing-text editing (§9) — evaluation only; not implemented
 - Adobe-validated /ByteRange CMS, TSA, LTV — cert-sign stays experimental
-- In-workspace multi-op DAG
+- In-workspace multi-op DAG / full batch queue
 - Claiming healthcare/legal/regulatory compliance
 - Drive still needs Google Picker under `drive.file` for arbitrary library files
 - Expanding OneDrive/Dropbox back to full library scopes — intentionally out of scope
-- JPEG-compress raster path remains main-thread
+- Mid-operation AbortSignal for soft-cancel tools (Flatten/Protect/etc.)
+- Full §13 ETA / output-size telemetry
 - Measured perf / full a11y pass — manual only
 
 ## Env vars (cloud)
