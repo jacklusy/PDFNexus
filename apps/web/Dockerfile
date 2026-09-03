@@ -11,6 +11,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
+COPY scripts ./scripts
 COPY packages/shared ./packages/shared
 COPY apps/web ./apps/web
 RUN npm run build -w @pdfnexus/shared && npm run build -w @pdfnexus/web
