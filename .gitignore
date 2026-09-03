@@ -4,7 +4,7 @@ dist
 .turbo
 coverage
 .env
-.env.local
+.env.*
 *.log
 .DS_Store
 apps/api/prisma/*.db

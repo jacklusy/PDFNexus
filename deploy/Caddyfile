@@ -1,0 +1,11 @@
+{$APP_URL} {
+	reverse_proxy web:3000
+}
+
+{$API_URL} {
+	reverse_proxy api:4000
+}
+
+{$STORAGE_URL} {
+	reverse_proxy minio:9000
+}
