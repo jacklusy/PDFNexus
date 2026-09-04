@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type { NextConfig } from 'next';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -46,6 +47,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  // Monorepo: without this, Next scopes dependency tracing to apps/web and
+  // silently omits the hoisted root node_modules from the standalone build.
+  outputFileTracingRoot: path.join(__dirname, '../../'),
   transpilePackages: ['@pdfnexus/shared', 'pdfjs-dist', 'pdfstudio'],
   experimental: {
     optimizePackageImports: ['lucide-react'],
