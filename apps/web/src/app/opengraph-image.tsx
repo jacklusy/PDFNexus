@@ -32,8 +32,10 @@ export default function OpenGraphImage() {
         >
           PDFNexus
         </div>
+        {/* Site-wide card: every tool page shares this image, so the headline
+            stays generic rather than naming one specific tool. */}
         <div style={{ marginTop: 24, fontSize: 64, fontWeight: 700, lineHeight: 1.1 }}>
-          Merge & organize PDFs locally
+          Edit & convert PDFs locally
         </div>
         <div style={{ marginTop: 20, fontSize: 28, color: 'rgba(255,255,255,0.8)', maxWidth: 800 }}>
           Browser-local editing. Verified delivery when you download.

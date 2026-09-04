@@ -27,6 +27,8 @@ const OTP_REQUEST_LIMIT = 5;
 const OTP_REQUEST_WINDOW_MS = 15 * 60 * 1000;
 const OTP_VERIFY_LIMIT = 20;
 const OTP_VERIFY_WINDOW_MS = 15 * 60 * 1000;
+/** Minimum age before `me()` refreshes lastSeenAt (see usage for rationale). */
+const LAST_SEEN_REFRESH_MS = 5 * 60 * 1000;
 
 @Injectable()
 export class AuthEmailService {
@@ -193,10 +195,17 @@ export class AuthEmailService {
       return { authenticated: false, verified: false };
     }
 
-    await this.prisma.verifiedUser.update({
-      where: { email },
-      data: { lastSeenAt: new Date() },
-    });
+    // `me()` runs on every authenticated request, so writing lastSeenAt
+    // unconditionally scales DB writes with request volume rather than with
+    // user count. Only refresh it once it is actually stale, and don't block
+    // the response on it — a few minutes of drift is irrelevant here.
+    if (Date.now() - user.lastSeenAt.getTime() > LAST_SEEN_REFRESH_MS) {
+      void this.prisma.verifiedUser
+        .update({ where: { email }, data: { lastSeenAt: new Date() } })
+        .catch(() => {
+          // best-effort: losing a lastSeenAt refresh must never fail the request
+        });
+    }
 
     return {
       authenticated: true,

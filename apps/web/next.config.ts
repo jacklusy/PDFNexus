@@ -91,6 +91,20 @@ const nextConfig: NextConfig = {
         source: '/:path*',
         headers: securityHeaders,
       },
+      // Static marketing/tool content: identical for every visitor, so let a
+      // CDN/proxy serve it while browsers still revalidate (max-age=0).
+      // Excludes /api, /admin, /workspace and /cloud (per-user session state,
+      // must never be shared from a cache) and /_next (Next already sets its
+      // own long-lived immutable headers on hashed assets — don't downgrade).
+      {
+        source: '/((?!api|admin|workspace|cloud|_next).*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400',
+          },
+        ],
+      },
     ];
   },
 };

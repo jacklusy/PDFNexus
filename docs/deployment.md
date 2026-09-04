@@ -123,7 +123,9 @@ You do **not** need to create a database anywhere in the Oracle console. There's
 
 1. Docker downloads and starts a `postgres:16-alpine` container.
 2. Postgres auto-creates an empty database named `pdfnexus` (from the `POSTGRES_DB` setting baked into the compose file).
-3. In Step 10, `prisma migrate deploy` connects to that empty database and creates all the actual tables the app needs (users, files, jobs, etc.).
+3. In Step 10, `prisma db push` connects to that empty database and creates all the actual tables the app needs (users, files, jobs, etc.).
+
+> This project has no `prisma/migrations/` directory — the schema is applied directly with `db push`. Do **not** use `prisma migrate deploy` here: with no migration files it silently reports "No pending migrations" and creates nothing.
 
 The only thing *you* provide is a password for it — that's the `POSTGRES_PASSWORD` value you'll set in the next step. Nothing to click or provision in the Oracle console for this.
 
@@ -208,7 +210,7 @@ All services should show `running` (or `healthy`). If something shows `restartin
 Once Postgres is healthy, create the actual database tables:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec api npx prisma migrate deploy
+docker compose -f docker-compose.prod.yml exec api npx prisma db push
 ```
 
 ---
@@ -237,7 +239,7 @@ Should return a JSON `ok` response. Then open `https://app.yourdomain.com` in a 
 cd ~/PDFNexus
 git pull
 docker compose -f docker-compose.prod.yml up --build -d
-docker compose -f docker-compose.prod.yml exec api npx prisma migrate deploy
+docker compose -f docker-compose.prod.yml exec api npx prisma db push
 ```
 
 ---

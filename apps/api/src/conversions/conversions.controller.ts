@@ -14,9 +14,19 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ErrorCodes } from '@pdfnexus/shared';
 import { SameOriginGuard } from '../ocr/same-origin.guard';
+import { RedisService } from '../redis/redis.service';
 import { ConversionsService } from './conversions.service';
 
 const MAX_OFFICE_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Gotenberg runs as a single container, so unbounded concurrent conversions
+ * queue up inside it until they hit the 120s timeout with no backpressure
+ * signal. Cap concurrent calls and shed load with a 429 instead, mirroring
+ * OcrController. Superseded once conversions move onto a BullMQ queue.
+ */
+const MAX_CONCURRENT_CONVERSIONS = 2;
+const CONVERSION_CONCURRENCY_KEY = 'conversion:concurrent';
 
 const OFFICE_MIME = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -41,7 +51,10 @@ function isOfficeFile(file: Express.Multer.File): boolean {
 @Controller('conversions')
 @UseGuards(SameOriginGuard)
 export class ConversionsController {
-  constructor(private readonly conversions: ConversionsService) {}
+  constructor(
+    private readonly conversions: ConversionsService,
+    private readonly redis: RedisService,
+  ) {}
 
   @Post('office-to-pdf')
   @UseInterceptors(
@@ -88,19 +101,26 @@ export class ConversionsController {
       });
     }
 
-    try {
-      const pdf = await this.conversions.officeToPdf(
-        file.buffer,
-        file.originalname,
+    const acquired = await this.redis.acquireConcurrencySlot(
+      CONVERSION_CONCURRENCY_KEY,
+      MAX_CONCURRENT_CONVERSIONS,
+    );
+    if (!acquired) {
+      throw new HttpException(
+        {
+          error: 'Conversion service is busy. Please retry shortly.',
+          code: ErrorCodes.CONCURRENCY_LIMIT,
+        },
+        429,
       );
-      const baseName = file.originalname.replace(/\.[^.]+$/, '') || 'document';
-      const safeName = baseName.replace(/[^\w.\-()+ ]+/g, '_').slice(0, 120);
+    }
 
-      return new StreamableFile(pdf, {
-        type: 'application/pdf',
-        disposition: `attachment; filename="${safeName}.pdf"`,
-        length: pdf.length,
-      });
+    let pdf: Buffer;
+    try {
+      // The slot guards Gotenberg capacity only, so it is released as soon as
+      // the conversion returns — streaming the in-memory buffer back to the
+      // client afterwards costs Gotenberg nothing.
+      pdf = await this.conversions.officeToPdf(file.buffer, file.originalname);
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new HttpException(
@@ -110,6 +130,17 @@ export class ConversionsController {
         },
         502,
       );
+    } finally {
+      await this.redis.releaseConcurrencySlot(CONVERSION_CONCURRENCY_KEY);
     }
+
+    const baseName = file.originalname.replace(/\.[^.]+$/, '') || 'document';
+    const safeName = baseName.replace(/[^\w.\-()+ ]+/g, '_').slice(0, 120);
+
+    return new StreamableFile(pdf, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${safeName}.pdf"`,
+      length: pdf.length,
+    });
   }
 }

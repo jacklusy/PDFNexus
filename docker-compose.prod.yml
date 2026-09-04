@@ -89,7 +89,11 @@ services:
       # NODE_ENV is hardcoded here (not left to .env) so this compose file
       # always runs in production mode regardless of the shared .env value.
       NODE_ENV: production
-      DATABASE_URL: postgresql://pdfnexus:${POSTGRES_PASSWORD}@postgres:5432/pdfnexus?schema=public
+      # connection_limit is set explicitly rather than left to Prisma's default
+      # (cpus*2+1), which would silently grow if this box ever gets more CPUs.
+      # One API process + its in-process BullMQ workers share this pool; 10 is
+      # ample here and leaves most of Postgres's 100-connection ceiling free.
+      DATABASE_URL: postgresql://pdfnexus:${POSTGRES_PASSWORD}@postgres:5432/pdfnexus?schema=public&connection_limit=10&pool_timeout=10
       REDIS_URL: redis://redis:6379
       S3_ENDPOINT: ${NEXT_PUBLIC_STORAGE_URL}
       GOTENBERG_URL: http://gotenberg:3000
@@ -107,6 +111,13 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      # NEXT_PUBLIC_* must be passed at BUILD time — Next inlines them into the
+      # bundle. Runtime env_file alone leaves canonical/OG/sitemap URLs on the
+      # fallback domain. Sourced from the same .env values used elsewhere.
+      args:
+        NEXT_PUBLIC_APP_URL: ${APP_URL}
+        NEXT_PUBLIC_API_URL: ${API_URL}
+        NEXT_PUBLIC_STORAGE_URL: ${NEXT_PUBLIC_STORAGE_URL}
     restart: unless-stopped
     env_file: .env
     environment:

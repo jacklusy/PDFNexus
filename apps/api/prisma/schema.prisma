@@ -182,6 +182,7 @@ model AnalyticsEvent {
   @@index([country, createdAt])
   @@index([device, createdAt])
   @@index([os, createdAt])
+  @@index([sessionId, createdAt])
 }
 
 model Feedback {
@@ -194,6 +195,7 @@ model Feedback {
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+  @@index([email, createdAt])
 }
 
 model ProcessingLog {
@@ -244,6 +246,7 @@ model User {
 
   @@index([status])
   @@index([deletedAt])
+  @@index([roleId])
   @@map("users")
 }
 
@@ -327,6 +330,7 @@ model AuditLog {
   @@index([createdAt])
   @@index([action, createdAt])
   @@index([actorUserId, createdAt])
+  @@index([actorEmail, createdAt])
 }
 
 model ErrorEvent {
@@ -350,6 +354,7 @@ model ErrorEvent {
   @@index([status, lastSeenAt])
   @@index([severity, lastSeenAt])
   @@index([lastSeenAt])
+  @@index([source, lastSeenAt])
 }
 
 model AdminNotification {

@@ -1,14 +1,8 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { SiteHeader, SiteFooter } from '@/components/SiteChrome';
+import { JsonLd } from '@/components/JsonLd';
 import { getAppUrl } from '@/lib/seo';
-
-function escapeJsonLd(value: unknown): string {
-  return JSON.stringify(value)
-    .replace(/</g, '\\u003c')
-    .replace(/\u2028/g, '\\u2028')
-    .replace(/\u2029/g, '\\u2029');
-}
 
 export interface ToolFaq {
   question: string;
@@ -71,43 +65,32 @@ export function ToolPageShell({
     <div className="min-h-screen atmosphere-light">
       <SiteHeader />
       <main className="mx-auto max-w-5xl px-6 py-10 md:px-10">
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: escapeJsonLd(jsonLd) }}
-        />
-        {faqLd ? (
-          <script
-            type="application/ld+json"
-            dangerouslySetInnerHTML={{ __html: escapeJsonLd(faqLd) }}
-          />
-        ) : null}
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: escapeJsonLd({
-              '@context': 'https://schema.org',
-              '@type': 'BreadcrumbList',
-              itemListElement: [
-                {
-                  '@type': 'ListItem',
-                  position: 1,
-                  name: 'Home',
-                  item: getAppUrl(),
-                },
-                {
-                  '@type': 'ListItem',
-                  position: 2,
-                  name: 'Tools',
-                  item: `${getAppUrl()}/tools`,
-                },
-                {
-                  '@type': 'ListItem',
-                  position: 3,
-                  name: title,
-                  item: url,
-                },
-              ],
-            }),
+        <JsonLd data={jsonLd} />
+        {faqLd ? <JsonLd data={faqLd} /> : null}
+        <JsonLd
+          data={{
+            '@context': 'https://schema.org',
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+              {
+                '@type': 'ListItem',
+                position: 1,
+                name: 'Home',
+                item: getAppUrl(),
+              },
+              {
+                '@type': 'ListItem',
+                position: 2,
+                name: 'Tools',
+                item: `${getAppUrl()}/tools`,
+              },
+              {
+                '@type': 'ListItem',
+                position: 3,
+                name: title,
+                item: url,
+              },
+            ],
           }}
         />
 
