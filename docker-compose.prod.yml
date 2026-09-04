@@ -86,6 +86,9 @@ services:
       # Everything else (APP_URL, API_URL, ALLOWED_ORIGINS, COOKIE_SECRET,
       # RESEND_API_KEY, etc.) comes straight from .env — only the values
       # below need to point at the Docker network instead of localhost.
+      # NODE_ENV is hardcoded here (not left to .env) so this compose file
+      # always runs in production mode regardless of the shared .env value.
+      NODE_ENV: production
       DATABASE_URL: postgresql://pdfnexus:${POSTGRES_PASSWORD}@postgres:5432/pdfnexus?schema=public
       REDIS_URL: redis://redis:6379
       S3_ENDPOINT: ${NEXT_PUBLIC_STORAGE_URL}
@@ -106,6 +109,8 @@ services:
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     env_file: .env
+    environment:
+      NODE_ENV: production
     depends_on:
       - api
 
