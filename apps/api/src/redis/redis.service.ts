@@ -50,11 +50,21 @@ export class RedisService implements OnModuleDestroy {
     };
   }
 
+  /**
+   * @param ttlSec safety valve — must exceed the longest possible held slot.
+   * Without it a slot leaked between incr and decr (container recreated or
+   * OOM-killed mid-request) would persist forever, and because redis_data is
+   * a durable volume it would survive restarts too, wedging the limiter at
+   * its cap permanently. Refreshing the TTL on every acquire lets the counter
+   * self-heal once traffic stops.
+   */
   async acquireConcurrencySlot(
     key: string,
     max: number,
+    ttlSec = 300,
   ): Promise<boolean> {
     const count = await this.client.incr(key);
+    await this.client.expire(key, ttlSec);
     if (count > max) {
       await this.client.decr(key);
       return false;

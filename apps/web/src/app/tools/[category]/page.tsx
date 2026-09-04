@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { SiteFooter, SiteHeader } from '@/components/SiteChrome';
+import { JsonLd } from '@/components/JsonLd';
 import { pageMetadata, getAppUrl } from '@/lib/seo';
 import {
   getToolCategory,
@@ -62,10 +63,7 @@ export default async function ToolCategoryPage({
     <div className="min-h-screen atmosphere-light">
       <SiteHeader />
       <main className="mx-auto max-w-5xl px-6 py-10 md:px-10">
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
-        />
+        <JsonLd data={breadcrumbLd} />
         <nav aria-label="Breadcrumb" className="mb-4 text-sm text-[var(--color-muted)]">
           <ol className="flex flex-wrap gap-1.5">
             <li>

@@ -210,7 +210,7 @@ All services should show `running` (or `healthy`). If something shows `restartin
 Once Postgres is healthy, create the actual database tables:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec api npx prisma db push
+docker compose -f docker-compose.prod.yml exec api npx prisma db push --skip-generate
 ```
 
 ---
@@ -239,7 +239,7 @@ Should return a JSON `ok` response. Then open `https://app.yourdomain.com` in a 
 cd ~/PDFNexus
 git pull
 docker compose -f docker-compose.prod.yml up --build -d
-docker compose -f docker-compose.prod.yml exec api npx prisma db push
+docker compose -f docker-compose.prod.yml exec api npx prisma db push --skip-generate
 ```
 
 ---

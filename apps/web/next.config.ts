@@ -91,18 +91,20 @@ const nextConfig: NextConfig = {
         source: '/:path*',
         headers: securityHeaders,
       },
-      // Static marketing/tool content: identical for every visitor, so let a
-      // CDN/proxy serve it while browsers still revalidate (max-age=0).
-      // Excludes /api, /admin, /workspace and /cloud (per-user session state,
-      // must never be shared from a cache) and /_next (Next already sets its
-      // own long-lived immutable headers on hashed assets — don't downgrade).
+      // Static marketing/tool content. Deliberately NO s-maxage and NO
+      // stale-while-revalidate: a deploy replaces the hashed files under
+      // _next/static, so any cache still serving previous HTML would hand out
+      // markup referencing chunk URLs that now 404 (ChunkLoadError, dead UI).
+      // `max-age=0, must-revalidate` still permits storage and cheap 304
+      // revalidation, but guarantees a deploy takes effect immediately.
+      // Revisit s-maxage only alongside cache purging on deploy.
+      //
+      // Excludes /admin, /workspace and /cloud (per-user session state) and
+      // /_next (Next sets its own immutable headers there — don't downgrade).
       {
-        source: '/((?!api|admin|workspace|cloud|_next).*)',
+        source: '/((?!admin|workspace|cloud|_next).*)',
         headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400',
-          },
+          { key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' },
         ],
       },
     ];

@@ -34,6 +34,8 @@ const envSchema = z.object({
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(524_288_000),
   DOWNLOAD_TOKEN_TTL_HOURS: z.coerce.number().int().positive().default(24),
   GOTENBERG_URL: z.string().url().optional(),
+  /** Concurrent office->PDF conversions allowed against the single Gotenberg. */
+  CONVERSION_MAX_CONCURRENT: z.coerce.number().int().positive().default(2),
   GEMINI_API_KEY: z.string().optional().default(''),
   OCR_BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(6_291_456),
   OCR_MAX_BASE64_CHARS: z.coerce.number().int().positive().default(5_500_000),

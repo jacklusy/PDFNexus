@@ -115,8 +115,8 @@ services:
       # bundle. Runtime env_file alone leaves canonical/OG/sitemap URLs on the
       # fallback domain. Sourced from the same .env values used elsewhere.
       args:
-        NEXT_PUBLIC_APP_URL: ${APP_URL}
-        NEXT_PUBLIC_API_URL: ${API_URL}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
         NEXT_PUBLIC_STORAGE_URL: ${NEXT_PUBLIC_STORAGE_URL}
     restart: unless-stopped
     env_file: .env

@@ -5,13 +5,16 @@ import {
   MaxFileSizeValidator,
   ParseFilePipe,
   Post,
+  Res,
   StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import type { Response } from 'express';
 import { ErrorCodes } from '@pdfnexus/shared';
 import { SameOriginGuard } from '../ocr/same-origin.guard';
 import { RedisService } from '../redis/redis.service';
@@ -25,8 +28,11 @@ const MAX_OFFICE_BYTES = 25 * 1024 * 1024;
  * signal. Cap concurrent calls and shed load with a 429 instead, mirroring
  * OcrController. Superseded once conversions move onto a BullMQ queue.
  */
-const MAX_CONCURRENT_CONVERSIONS = 2;
+const DEFAULT_MAX_CONCURRENT_CONVERSIONS = 2;
 const CONVERSION_CONCURRENCY_KEY = 'conversion:concurrent';
+/** Exceeds Gotenberg's 120s timeout so a slot is never reclaimed mid-run. */
+const CONVERSION_SLOT_TTL_SEC = 300;
+const CONVERSION_RETRY_AFTER_SEC = 30;
 
 const OFFICE_MIME = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -54,6 +60,7 @@ export class ConversionsController {
   constructor(
     private readonly conversions: ConversionsService,
     private readonly redis: RedisService,
+    private readonly config: ConfigService,
   ) {}
 
   @Post('office-to-pdf')
@@ -86,6 +93,7 @@ export class ConversionsController {
       }),
     )
     file: Express.Multer.File,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
     if (!file?.buffer?.length) {
       throw new BadRequestException({
@@ -101,19 +109,51 @@ export class ConversionsController {
       });
     }
 
-    const acquired = await this.redis.acquireConcurrencySlot(
-      CONVERSION_CONCURRENCY_KEY,
-      MAX_CONCURRENT_CONVERSIONS,
-    );
+    const maxConcurrent =
+      this.config.get<number>('CONVERSION_MAX_CONCURRENT') ??
+      DEFAULT_MAX_CONCURRENT_CONVERSIONS;
+
+    // Fail OPEN: this endpoint only needed Gotenberg before, so a Redis outage
+    // must not take conversions down with it. ioredis is configured with
+    // maxRetriesPerRequest: null, so an unreachable Redis would otherwise hang
+    // the request indefinitely rather than reject.
+    let acquired = true;
+    let slotHeld = false;
+    try {
+      acquired = await this.redis.acquireConcurrencySlot(
+        CONVERSION_CONCURRENCY_KEY,
+        maxConcurrent,
+        CONVERSION_SLOT_TTL_SEC,
+      );
+      slotHeld = acquired;
+    } catch {
+      acquired = true; // degrade to unbounded rather than refuse service
+    }
+
     if (!acquired) {
+      res.setHeader('Retry-After', String(CONVERSION_RETRY_AFTER_SEC));
       throw new HttpException(
         {
           error: 'Conversion service is busy. Please retry shortly.',
           code: ErrorCodes.CONCURRENCY_LIMIT,
+          retryAfterSec: CONVERSION_RETRY_AFTER_SEC,
         },
         429,
       );
     }
+
+    // Released with `void`, never awaited: a Redis blip must not discard a
+    // conversion the user already waited up to 120s for, nor mask the real
+    // error on the failure path. Mirrors OcrController's release.
+    const releaseSlot = () => {
+      if (!slotHeld) return;
+      slotHeld = false;
+      void this.redis
+        .releaseConcurrencySlot(CONVERSION_CONCURRENCY_KEY)
+        .catch(() => {
+          // best-effort; the slot's TTL is the backstop
+        });
+    };
 
     let pdf: Buffer;
     try {
@@ -131,7 +171,7 @@ export class ConversionsController {
         502,
       );
     } finally {
-      await this.redis.releaseConcurrencySlot(CONVERSION_CONCURRENCY_KEY);
+      releaseSlot();
     }
 
     const baseName = file.originalname.replace(/\.[^.]+$/, '') || 'document';
